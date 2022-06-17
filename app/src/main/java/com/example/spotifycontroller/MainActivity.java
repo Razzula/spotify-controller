@@ -17,6 +17,9 @@ import android.widget.TextView;
 
 import android.os.SystemClock;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority;
@@ -62,9 +65,10 @@ public class MainActivity extends AppCompatActivity {
     static Thread thread;
     static Thread nextThread;
 
-
     FusedLocationProviderClient fusedLocationProviderClient;
     Location lastKnownLocation;
+
+    static boolean valid = false;
 
     public class Test extends Thread {
 
@@ -76,9 +80,9 @@ public class MainActivity extends AppCompatActivity {
             }
 
             try {
-
                 sleep(timeToWait);
                 getLocation();
+                queueNextTrack();
 
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -152,6 +156,7 @@ public class MainActivity extends AppCompatActivity {
                     editor.putString("token", response.getAccessToken());
                     token = response.getAccessToken();
                     editor.apply();
+                    valid = true;
                     break;
 
                 // Auth flow returned an error
@@ -168,12 +173,23 @@ public class MainActivity extends AppCompatActivity {
 
     static String token;
 
-    private static void getAudioAnalysis(String id) {
-        GET("https://api.spotify.com/v1/audio-features/", id);
+    private static String getTrackEnergy(String id) {
+        JSONObject trackAnalysis = GET("https://api.spotify.com/v1/audio-features/", id);
+        try {
+            return trackAnalysis.get("energy").toString();
+        }
+        catch (JSONException e) {
+            Log.e("", "Map does not exist in trackAnalysis JSONObject");
+            return "?";
+        }
     }
 
-    private static void GET(final String inURL, final String inID) {
-        Thread connectToWebAPI = new Thread() {
+    private static JSONObject GET(final String inURL, final String inID) {
+
+        class WebThread implements Runnable {
+            private volatile JSONObject json;
+
+            @Override
             public void run() {
                 String endpoint = inURL;
                 String id = inID;
@@ -190,22 +206,43 @@ public class MainActivity extends AppCompatActivity {
 
                     BufferedReader br = new BufferedReader(new InputStreamReader((conn.getInputStream())));
 
+                    String data = "";
                     String output;
                     System.out.println("Output from Server .... \n");
                     while ((output = br.readLine()) != null) {
-                        Log.e("", output);
+                        data += output;
                     }
                     conn.disconnect();
+
+                    try {
+                        json = new JSONObject(data);
+                    }
+                    catch (JSONException e) {
+                        Log.e("", "Error parsing String to JSON");
+                    }
 
                 } catch (MalformedURLException e) {
                     Log.e("", "Malformed URL Exception");
                 } catch (IOException e) {
                     Log.e("", "IO Exception connecting to Web API");
                 }
-
             }
-        };
+
+            public JSONObject getJSON() {
+                return json;
+            }
+        }
+
+        WebThread webThread = new WebThread();
+        Thread connectToWebAPI = new Thread(webThread);
         connectToWebAPI.start();
+        try {
+            connectToWebAPI.join();
+        }
+        catch (InterruptedException e) {
+            Log.e("", "connectToWebAPI.join() interrupted");
+        }
+        return webThread.getJSON();
     }
 
     private void connected() {
@@ -248,14 +285,16 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public static void onMetadataChange(String trackID, int trackLength) {
+    public static void onMetadataChange(String trackID, int trackLength, String trackName) {
 
         Log.d("", "META CHANGED");
-        try {
-            getAudioAnalysis(trackID.split(":")[2]);
-        }
-        catch (IndexOutOfBoundsException e) {
-            Log.e("", "Invalid trackID");
+        if (valid) {
+            try {
+                String energy = getTrackEnergy(trackID.split(":")[2]);
+                Log.e("", "Playing " + trackName + ", Energy:" + energy);
+            } catch (IndexOutOfBoundsException e) {
+                Log.e("", "Invalid trackID");
+            }
         }
 
         currentTrackLength = trackLength;
@@ -315,7 +354,6 @@ public class MainActivity extends AppCompatActivity {
                             }
                         });
 
-                        //queueNextTrack();
                         lastKnownLocation = currentLocation;
                     }
                     else {
@@ -335,6 +373,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void queueNextTrack() {
-        playerApi.queue("spotify:track:6UDFkqHY5gLREnSh9jd5th");
+        float currentEnergy = currentVelocity / 70;
+        Log.e("", "Energy: "+currentEnergy);
+        // find song based off of energy
+        //playerApi.queue("spotify:track:6UDFkqHY5gLREnSh9jd5th");
     }
 }

@@ -59,7 +59,7 @@ public class ReceiverService extends Service {
                     String trackName = intent.getStringExtra("track");
                     int trackLengthInSec = intent.getIntExtra("length", 0);
 
-                    MainActivity.onMetadataChange(trackId, trackLengthInSec);
+                    MainActivity.onMetadataChange(trackId, trackLengthInSec, trackName);
                 }
             }
         };
