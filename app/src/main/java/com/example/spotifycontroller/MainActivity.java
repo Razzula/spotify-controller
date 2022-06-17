@@ -14,7 +14,8 @@ import android.content.Intent;
 import android.location.Location;
 import android.view.View;
 import android.widget.TextView;
-import android.webkit.WebView;
+
+import android.os.SystemClock;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
@@ -38,9 +39,6 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
-
-import java.io.IOException;
-import java.util.List;
 
 import java.lang.Thread;
 
@@ -66,6 +64,7 @@ public class MainActivity extends AppCompatActivity {
 
 
     FusedLocationProviderClient fusedLocationProviderClient;
+    Location lastKnownLocation;
 
     public class Test extends Thread {
 
@@ -130,58 +129,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
 
-        // SPOTIFY WEB API
-        /*Thread connectToWebAPI = new Thread() {
-            public void run() {
-                try {
-                    String url_auth =
-                            "https://accounts.spotify.com/authorize?"
-                                    + "client_id=" + CLIENT_ID + "&"
-                                    + "response_type=code&"
-                                    + "redirect_uri=" + REDIRECT_URI + "&"
-                                    + "scope=user-read-private%20user-read-email&"
-                                    + "state=34fFs29kd09";
-                    Log.e("", url_auth);
-
-                    URL url = new URL(url_auth);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("GET");
-                    //conn.setRequestProperty("Accept", "application/json");
-
-                    if (conn.getResponseCode() != 200) {
-                        throw new RuntimeException("Failed : HTTP error code : " + conn.getResponseCode());
-                    }
-
-                    BufferedReader br = new BufferedReader(new InputStreamReader((conn.getInputStream())));
-
-                    String output;
-                    System.out.println("Output from Server .... \n");
-                    while ((output = br.readLine()) != null) {
-                        //Log.e("", output);
-                        test += output+"\n";
-                    }
-                    conn.disconnect();
-
-                    Log.e("", test);
-                    WebView webView = (WebView)findViewById(R.id.webView);
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            webView.loadUrl(url_auth);
-                        }
-                    });
-
-                }
-                catch (MalformedURLException e) {
-                    Log.e("", "Malformed URL Exception");
-                }
-                catch (IOException e) {
-                    Log.e("", "IO Exception connecting to Web API");
-                }
-            }
-        };
-        connectToWebAPI.start();*/
-
+        //SPOTIFY WEB API
         AuthorizationRequest.Builder builder = new AuthorizationRequest.Builder(CLIENT_ID, AuthorizationResponse.Type.TOKEN, REDIRECT_URI);
         builder.setScopes(new String[]{SCOPES});
         AuthorizationRequest request = builder.build();
@@ -204,7 +152,6 @@ public class MainActivity extends AppCompatActivity {
                     editor.putString("token", response.getAccessToken());
                     token = response.getAccessToken();
                     editor.apply();
-                    getBPM("6UDFkqHY5gLREnSh9jd5th");
                     break;
 
                 // Auth flow returned an error
@@ -219,13 +166,13 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    String token;
+    static String token;
 
-    private void getBPM(String id) {
+    private static void getAudioAnalysis(String id) {
         GET("https://api.spotify.com/v1/audio-features/", id);
     }
 
-    private void GET(final String inURL, final String inID) {
+    private static void GET(final String inURL, final String inID) {
         Thread connectToWebAPI = new Thread() {
             public void run() {
                 String endpoint = inURL;
@@ -276,7 +223,7 @@ public class MainActivity extends AppCompatActivity {
     public static void onPlaybackStateChange(boolean playing, int playbackPos) {
 
         if (playing) {
-            Log.e("", "PLAYBACK STARTED");
+            Log.d("", "PLAYBACK STARTED");
 
             timeToWait = currentTrackLength - playbackPos - 10000; //time (in ms) until 10s from end of track
             Log.e("", ""+timeToWait);
@@ -285,10 +232,15 @@ public class MainActivity extends AppCompatActivity {
                 thread.interrupt();
             }
             thread = nextThread;
-            thread.start();
+            try {
+                thread.start();
+            }
+            catch (IllegalThreadStateException e) {
+                Log.e("", "Illegal State Exception");
+            }
         }
         else {
-            Log.e("", "PLAYBACK STOPPED");
+            Log.d("", "PLAYBACK STOPPED");
 
             if (thread != null) {
                 thread.interrupt();
@@ -298,7 +250,13 @@ public class MainActivity extends AppCompatActivity {
 
     public static void onMetadataChange(String trackID, int trackLength) {
 
-        Log.e("", "META CHANGED");
+        Log.d("", "META CHANGED");
+        try {
+            getAudioAnalysis(trackID.split(":")[2]);
+        }
+        catch (IndexOutOfBoundsException e) {
+            Log.e("", "Invalid trackID");
+        }
 
         currentTrackLength = trackLength;
     }
@@ -316,11 +274,12 @@ public class MainActivity extends AppCompatActivity {
 
     private void getLocation() {
 
-        TextView text = findViewById(R.id.textView);
+        TextView textLocation = findViewById(R.id.location);
+        TextView textSpeed = findViewById(R.id.data);
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                text.setText("");
+                textLocation.setText("");
             }
         });
 
@@ -330,20 +289,34 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void onComplete(@NonNull Task<Location> task) {
 
-                    Location location = task.getResult();
-                    if (location != null) {
-                        Log.e("", "lat:"+location.getLatitude()+" long:"+location.getLongitude());
-                        Log.e("", ""+location.getSpeed());
+                    Location currentLocation = task.getResult();
+                    if (currentLocation != null) {
+                        Log.d("", "lat:"+currentLocation.getLatitude()+" long:"+currentLocation.getLongitude());
+
+                        if (lastKnownLocation != null) {
+                            float distanceTravelled = currentLocation.distanceTo(lastKnownLocation);
+                            float timePassed = (SystemClock.elapsedRealtimeNanos() - lastKnownLocation.getElapsedRealtimeNanos()) / 1000000000; //in ms
+                            currentVelocity = distanceTravelled / timePassed;
+
+                            //TEMP
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    textSpeed.setText("distance: "+distanceTravelled+"m\ntime :"+timePassed+"s\nspeed: "+currentVelocity+"m/s");
+                                }
+                            });
+                        }
 
                         //TEMP
                         runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
-                                text.setText("lat:"+location.getLatitude()+"\nlong:"+location.getLongitude()+"\nspeed:"+location.getSpeed());
+                                textLocation.setText("lat:"+currentLocation.getLatitude()+"\nlong:"+currentLocation.getLongitude());
                             }
                         });
 
-                        queueNextTrack();
+                        //queueNextTrack();
+                        lastKnownLocation = currentLocation;
                     }
                     else {
                         Log.e("", "Location is null");
