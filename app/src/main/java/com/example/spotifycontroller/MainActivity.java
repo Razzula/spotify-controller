@@ -19,6 +19,7 @@ import android.os.SystemClock;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
@@ -42,8 +43,10 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
 
 import java.lang.Thread;
+import java.util.stream.Collectors;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -53,7 +56,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String CLIENT_ID = "c3ea15ea37eb4121a64ee8af3521f832";
     private static final String REDIRECT_URI = "com.example.spotifycontroller://callback";
     private static final int REQUEST_CODE = 1337;
-    private static final String SCOPES = "user-read-email,user-read-private";
+    private static final String SCOPES = "user-read-email,user-read-private,playlist-read-private";
     private SpotifyAppRemote mSpotifyAppRemote;
 
     Intent service;
@@ -156,7 +159,9 @@ public class MainActivity extends AppCompatActivity {
                     editor.putString("token", response.getAccessToken());
                     token = response.getAccessToken();
                     editor.apply();
+
                     valid = true;
+                    getPlaylistData();
                     break;
 
                 // Auth flow returned an error
@@ -173,14 +178,34 @@ public class MainActivity extends AppCompatActivity {
 
     static String token;
 
-    private static String getTrackEnergy(String id) {
+    private static String getSingleTrackEnergy(String id) {
         JSONObject trackAnalysis = GET("https://api.spotify.com/v1/audio-features/", id);
         try {
             return trackAnalysis.get("energy").toString();
         }
         catch (JSONException e) {
             Log.e("", "Map does not exist in trackAnalysis JSONObject");
-            return "?";
+            return null;
+        }
+    }
+
+    private void getPlaylistEnergies() {
+        String request = "?ids=";
+        for (int i=0; i<playlist.size(); i++) {
+            request += playlist.get(i).id+",";
+        }
+
+        try {
+            JSONArray tracksAnalyses = GET("https://api.spotify.com/v1/audio-features/", request).getJSONArray("audio_features");
+            for (int i=0; i<tracksAnalyses.length(); i++) {
+                JSONObject trackAnalysis = tracksAnalyses.getJSONObject(i);
+                playlist.get(i).energy = Float.parseFloat(trackAnalysis.getString("energy"));
+            }
+            //return trackAnalysis.get("energy").toString();
+        }
+        catch (JSONException e) {
+            Log.e("", "Map does not exist in trackAnalysis JSONObject");
+            //return null;
         }
     }
 
@@ -201,17 +226,17 @@ public class MainActivity extends AppCompatActivity {
                     conn.setRequestProperty("Authorization",  "Bearer " + token);
 
                     if (conn.getResponseCode() != 200) {
+                        Log.e("", endpoint+id);
                         throw new RuntimeException("Failed : HTTP error code : " + conn.getResponseCode());
                     }
 
                     BufferedReader br = new BufferedReader(new InputStreamReader((conn.getInputStream())));
 
-                    String data = "";
-                    String output;
-                    System.out.println("Output from Server .... \n");
+                    String data = br.lines().collect(Collectors.joining());
+                    /*String output;
                     while ((output = br.readLine()) != null) {
                         data += output;
-                    }
+                    }*/
                     conn.disconnect();
 
                     try {
@@ -290,7 +315,7 @@ public class MainActivity extends AppCompatActivity {
         Log.d("", "META CHANGED");
         if (valid) {
             try {
-                String energy = getTrackEnergy(trackID.split(":")[2]);
+                String energy = getSingleTrackEnergy(trackID.split(":")[2]);
                 Log.e("", "Playing " + trackName + ", Energy:" + energy);
             } catch (IndexOutOfBoundsException e) {
                 Log.e("", "Invalid trackID");
@@ -366,6 +391,50 @@ public class MainActivity extends AppCompatActivity {
             Log.e("", "Security Exception");
         }
 
+    }
+
+    private class Track {
+
+        public String name;
+        public String id;
+        public float energy;
+
+        private Track(String name, String id) {
+            this.name = name;
+            this.id = id;
+
+        }
+    }
+    ArrayList<Track> playlist;
+
+    private void getPlaylistData() {
+        //getMultipleTracksEnergy(new String[] {"6UDFkqHY5gLREnSh9jd5th", "6UDFkqHY5gLREnSh9jd5th"});
+        playlist = new ArrayList<Track>();
+
+        JSONObject playlist = GET("https://api.spotify.com/v1/playlists/", "1Ef8kGg89vFiO7ELA8KjA6/tracks");
+        try {
+            JSONArray playlistInfo = playlist.getJSONArray("items");
+            for (int i=0; i<playlistInfo.length(); i++) {
+                JSONObject trackInfo = playlistInfo.getJSONObject(i).getJSONObject("track");
+
+                String trackID = trackInfo.getString("id");
+                if (trackID == null) {
+                    Log.e("", trackInfo.getString("name"));
+                    continue; //local track
+                }
+
+                Track track = new Track(trackInfo.getString("name"), trackID);
+                this.playlist.add(track);
+            }
+            Log.e("", "["+this.playlist.get(0).name+", "+this.playlist.get(0).id+", "+this.playlist.get(0).energy+"]");
+        }
+        catch (JSONException e) {
+            Log.e("", "Map does not exist in JSONObject");
+            return;
+        }
+
+        getPlaylistEnergies();
+        Log.e("", "["+this.playlist.get(0).name+", "+this.playlist.get(0).id+", "+this.playlist.get(0).energy+"]");
     }
 
     public void Click(View view) {
