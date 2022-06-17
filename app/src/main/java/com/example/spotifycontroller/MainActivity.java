@@ -46,6 +46,7 @@ import java.net.URL;
 import java.util.ArrayList;
 
 import java.lang.Thread;
+import java.util.Random;
 import java.util.stream.Collectors;
 
 public class MainActivity extends AppCompatActivity {
@@ -204,7 +205,7 @@ public class MainActivity extends AppCompatActivity {
             //return trackAnalysis.get("energy").toString();
         }
         catch (JSONException e) {
-            Log.e("", "Map does not exist in trackAnalysis JSONObject");
+            Log.e("", "Map does not exist in tracksAnalyses JSONObject");
             //return null;
         }
     }
@@ -366,7 +367,7 @@ public class MainActivity extends AppCompatActivity {
                             runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
-                                    textSpeed.setText("distance: "+distanceTravelled+"m\ntime :"+timePassed+"s\nspeed: "+currentVelocity+"m/s");
+                                    textSpeed.setText("distance: "+distanceTravelled+"m\ntime :"+timePassed+"s\nspeed: "+currentVelocity+"m/s\n\nenergy: "+(currentVelocity/31.2928));
                                 }
                             });
                         }
@@ -408,7 +409,7 @@ public class MainActivity extends AppCompatActivity {
     ArrayList<Track> playlist;
 
     private void getPlaylistData() {
-        //getMultipleTracksEnergy(new String[] {"6UDFkqHY5gLREnSh9jd5th", "6UDFkqHY5gLREnSh9jd5th"});
+
         playlist = new ArrayList<Track>();
 
         JSONObject playlist = GET("https://api.spotify.com/v1/playlists/", "1Ef8kGg89vFiO7ELA8KjA6/tracks");
@@ -418,8 +419,8 @@ public class MainActivity extends AppCompatActivity {
                 JSONObject trackInfo = playlistInfo.getJSONObject(i).getJSONObject("track");
 
                 String trackID = trackInfo.getString("id");
-                if (trackID == null) {
-                    Log.e("", trackInfo.getString("name"));
+                if (trackInfo.getBoolean("is_local")) {
+                    //Log.e("", trackInfo.getString("name"));
                     continue; //local track
                 }
 
@@ -442,9 +443,32 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void queueNextTrack() {
-        float currentEnergy = currentVelocity / 70;
+        float currentEnergy = currentVelocity / 31.2928f; //calculates energy as a % of car speed out of 70mph
+            /*//FOR DEBUG
+            Random rand = new Random();
+            currentEnergy = rand.nextFloat();*/
         Log.e("", "Energy: "+currentEnergy);
+
+
         // find song based off of energy
-        //playerApi.queue("spotify:track:6UDFkqHY5gLREnSh9jd5th");
+        if (playlist.size() > 0) {
+            float minDelta = 1;
+            Track nextTrack = new Track("", "");
+            for (int i = 0; i < playlist.size(); i++) {
+                float delta = Math.abs(currentEnergy - playlist.get(i).energy);
+                if (delta <= minDelta) {
+                    minDelta = delta;
+                    nextTrack = playlist.get(i);
+                }
+            }
+            playlist.remove(nextTrack);
+
+            //queue
+            playerApi.queue("spotify:track:" + nextTrack.id);
+            Log.e("", "QUEUED " + nextTrack.name);
+        }
+        else {
+            Log.e("", "Playlist empty");
+        }
     }
 }
