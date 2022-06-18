@@ -3,6 +3,8 @@ package com.example.spotifycontroller;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
@@ -26,6 +28,8 @@ import android.util.Log;
 import android.content.Intent;
 import android.location.Location;
 import android.view.View;
+import android.widget.CompoundButton;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.os.SystemClock;
 import java.io.BufferedReader;
@@ -57,9 +61,12 @@ public class MainActivity extends AppCompatActivity {
     FusedLocationProviderClient fusedLocationProviderClient;
     Location lastKnownLocation;
 
-    static boolean valid = false;
+    static boolean active = false;
 
+    ArrayList<Playlist> playlists;
+    PlaylistsAdapter playlistsRecyclerViewAdapter;
     ArrayList<Track> playlist;
+    String selectedPlaylistID;
     private static class Track {
 
         public String name;
@@ -96,6 +103,25 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        Switch toggle = (Switch) findViewById(R.id.switchEnable);
+        if (toggle != null) {
+            toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+
+                    active = isChecked;
+
+                    if (isChecked) {
+                        getPlaylistTracks(selectedPlaylistID);
+                        playerApi.resume();
+                    }
+                    else {
+
+                    }
+
+                }
+            });
+        }
     }
 
     @Override
@@ -112,7 +138,16 @@ public class MainActivity extends AppCompatActivity {
 
         token = getIntent().getStringExtra("token");
 
-        getPlaylistData();
+        connected();
+
+        // setup playlistsRecyclerView
+        playlists = new ArrayList<>();
+        playlistsRecyclerViewAdapter = new PlaylistsAdapter(playlists);
+        RecyclerView playlistsRecyclerView = (RecyclerView) findViewById(R.id.recyclerPlaylists);
+        playlistsRecyclerView.setAdapter(playlistsRecyclerViewAdapter);
+        playlistsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+
+        getUserPlaylists();
 
     }
 
@@ -198,11 +233,27 @@ public class MainActivity extends AppCompatActivity {
         return webThread.getJSON();
     }
 
-    private void getPlaylistData() {
+    private void getUserPlaylists() {
+
+        try {
+            JSONArray playlists = GET("https://api.spotify.com/v1/me/playlists", "").getJSONArray("items"); // get user's playlist data
+            for (int i=0; i<playlists.length(); i++) { // for each track in playlist
+                JSONObject playlist = playlists.getJSONObject(i);
+                this.playlists.add(new Playlist(playlist.getString("id"), playlist.getString("name")));
+            }
+            playlistsRecyclerViewAdapter.notifyItemInserted(0);
+
+        } catch (JSONException e) {
+            Log.e(TAG, "Map does not exists in playlists JSONObject");
+        }
+
+    }
+
+    private void getPlaylistTracks(String id) {
 
         playlist = new ArrayList<>();
 
-        JSONObject playlist = GET("https://api.spotify.com/v1/playlists/", "1Ef8kGg89vFiO7ELA8KjA6/tracks"); // get playlist data
+        JSONObject playlist = GET("https://api.spotify.com/v1/playlists/", id+"/tracks"); // get playlist track data
         try {
             JSONArray playlistInfo = playlist.getJSONArray("items");
             for (int i=0; i<playlistInfo.length(); i++) { // for each track in playlist
@@ -263,42 +314,42 @@ public class MainActivity extends AppCompatActivity {
         currentTrackLength = trackLength;
 
         Log.e(TAG, "META CHANGED");
-        if (valid) { // ensure API is connected
-            try {
-                String energy = getSingleTrackEnergy(trackID.split(":")[2]); // get id from URI
-                Log.e(TAG, "Playing " + trackName + ", Energy:" + energy);
-            } catch (IndexOutOfBoundsException e) {
-                Log.e(TAG, "Invalid trackID");
-            }
+        try {
+            String energy = getSingleTrackEnergy(trackID.split(":")[2]); // get id from URI
+            Log.e(TAG, "Playing " + trackName + ", Energy:" + energy);
+        } catch (IndexOutOfBoundsException e) {
+            Log.e(TAG, "Invalid trackID");
         }
 
-        playerApi.resume();
+        if (active) {
+            playerApi.resume();
+        }
     }
 
     public static void onPlaybackStateChange(boolean playing, int playbackPos) {
 
-        if (playing) {
-            Log.e(TAG, "PLAYBACK STARTED");
+        if (active) {
+            if (playing) {
+                Log.e(TAG, "PLAYBACK STARTED");
 
-            timeToWait = currentTrackLength - playbackPos - 10000; // time (in ms) until 10s from end of track
-            Log.e(TAG, ""+timeToWait);
+                timeToWait = currentTrackLength - playbackPos - 10000; // time (in ms) until 10s from end of track
+                Log.e(TAG, "" + timeToWait);
 
-            if (thread != null) {
-                thread.interrupt();
-            }
-            thread = nextThread;
-            try {
-                thread.start();
-            }
-            catch (IllegalThreadStateException e) {
-                Log.e(TAG, "Illegal State Exception");
-            }
-        }
-        else {
-            Log.e(TAG, "PLAYBACK STOPPED");
+                if (thread != null) {
+                    thread.interrupt();
+                }
+                thread = nextThread;
+                try {
+                    thread.start();
+                } catch (IllegalThreadStateException e) {
+                    Log.e(TAG, "Illegal State Exception");
+                }
+            } else {
+                Log.e(TAG, "PLAYBACK STOPPED");
 
-            if (thread != null) {
-                thread.interrupt();
+                if (thread != null) {
+                    thread.interrupt();
+                }
             }
         }
     }
@@ -336,6 +387,11 @@ public class MainActivity extends AppCompatActivity {
     // GPS LOCATION
 
     private void getLocation() {
+
+        if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_DENIED) {
+            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44);
+            return;
+        }
 
         //TEMP
         TextView textLocation = findViewById(R.id.location);
@@ -395,7 +451,36 @@ public class MainActivity extends AppCompatActivity {
     }
 
     //TEMP
-    public void Click(View view) {
+    public void forceLocationUpdate(View view) {
         getLocation();
+    }
+
+    View previouslySelectedPlaylist;
+    public void playlistsSelected(View view) {
+
+        TextView textView = (TextView) view.findViewById(R.id.textName);
+        String selectedPlaylist = textView.getText().toString();
+
+        Switch toggle = (Switch) findViewById(R.id.switchEnable);
+        if (toggle.isChecked()) {
+            return;
+        }
+
+        view.setBackgroundColor(0x8800AA00);
+        if (previouslySelectedPlaylist != null) {
+            previouslySelectedPlaylist.setBackgroundColor(0x00000000);
+        }
+        else {
+            toggle.setEnabled(true);
+        }
+
+        // get ID of playlist
+        for (int i=0; i<playlists.size(); i++) {
+            if (playlists.get(i).getName().equals(selectedPlaylist)) {
+                selectedPlaylistID = playlists.get(i).getID();
+                previouslySelectedPlaylist = view;
+                break;
+            }
+        }
     }
 }
