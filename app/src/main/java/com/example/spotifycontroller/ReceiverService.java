@@ -45,14 +45,7 @@ public class ReceiverService extends Service {
             public void onReceive(Context context, Intent intent)
             {
                 String action = intent.getAction();
-                if (action.equals(BroadcastTypes.PLAYBACK_STATE_CHANGED)) {
-                    boolean playing = intent.getBooleanExtra("playing", false);
-                    int positionInMs = intent.getIntExtra("playbackPosition", 0);
-
-                    MainActivity.onPlaybackStateChange(playing, positionInMs);
-                }
-
-                else if (action.equals(BroadcastTypes.METADATA_CHANGED)) {
+                if (action.equals(BroadcastTypes.METADATA_CHANGED)) {
                     String trackId = intent.getStringExtra("id");
                     String artistName = intent.getStringExtra("artist");
                     String albumName = intent.getStringExtra("album");
@@ -60,6 +53,12 @@ public class ReceiverService extends Service {
                     int trackLengthInSec = intent.getIntExtra("length", 0);
 
                     MainActivity.onMetadataChange(trackId, trackLengthInSec, trackName);
+                }
+                else if (action.equals(BroadcastTypes.PLAYBACK_STATE_CHANGED)) {
+                    boolean playing = intent.getBooleanExtra("playing", false);
+                    int positionInMs = intent.getIntExtra("playbackPosition", 0);
+
+                    MainActivity.onPlaybackStateChange(playing, positionInMs);
                 }
             }
         };

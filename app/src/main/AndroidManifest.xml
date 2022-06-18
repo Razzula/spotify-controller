@@ -24,19 +24,6 @@
             </intent-filter>
         </activity>
 
-        <!--<receiver
-            android:name="SpotifyBroadcastReceiver"
-            android:enabled="true"
-            android:exported="true">
-
-            <intent-filter>
-                <action android:name="com.spotify.music.playbackstatechanged"/>
-                <action android:name="com.spotify.music.metadatachanged"/>
-                <action android:name="com.spotify.music.queuechanged"/>
-            </intent-filter>
-
-        </receiver>-->
-
         <service
             android:name=".ReceiverService"
             android:enabled="true">
@@ -48,6 +35,5 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.INTERNET"/>
-
 
 </manifest>
