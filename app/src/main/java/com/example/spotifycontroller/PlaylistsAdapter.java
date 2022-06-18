@@ -13,10 +13,15 @@ public class PlaylistsAdapter extends RecyclerView.Adapter<PlaylistsAdapter.View
 
     public class ViewHolder extends RecyclerView.ViewHolder {
         public TextView nameTextView;
+        public TextView descriptionTextView;
+        public TextView infoTextView;
 
         public ViewHolder(View itemView) {
             super(itemView);
             nameTextView = (TextView) itemView.findViewById(R.id.textName);
+            descriptionTextView = (TextView) itemView.findViewById(R.id.textDescription);
+            infoTextView = (TextView) itemView.findViewById(R.id.textInfo);
+
         }
     }
 
@@ -46,6 +51,12 @@ public class PlaylistsAdapter extends RecyclerView.Adapter<PlaylistsAdapter.View
         // set view items to contain playlist data
         TextView nameTextView = holder.nameTextView;
         nameTextView.setText(playlist.getName());
+
+        TextView descriptionTextView = holder.descriptionTextView;
+        descriptionTextView.setText(playlist.getDescription());
+
+        TextView infoTextView = holder.infoTextView;
+        infoTextView.setText(playlist.getNumberOfTracks()+" tracks");
     }
 
     @Override

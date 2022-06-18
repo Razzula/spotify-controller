@@ -66,6 +66,13 @@ public class SplashActivity extends AppCompatActivity {
                 while (mSpotifyAppRemote == null || token == null) {
 
                 }
+                try {
+                    sleep(500);
+                }
+                catch (InterruptedException e) {
+
+                }
+
                 Log.e("Splash", "Launching main");
                 Intent newIntent = new Intent(SplashActivity.this, MainActivity.class);
                 newIntent.putExtra("token", token);

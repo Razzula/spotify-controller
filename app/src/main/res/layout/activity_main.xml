@@ -40,10 +40,9 @@
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerPlaylists"
-        android:layout_width="413dp"
-        android:layout_height="289dp"
-        android:layout_marginLeft="10dp"
-        android:layout_marginTop="1dp"
+        android:layout_width="match_parent"
+        android:layout_height="400dp"
+        android:layout_marginTop="10dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
@@ -55,6 +54,8 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:enabled="false"
+        android:minWidth="48dp"
+        android:minHeight="48dp"
         android:showText="false"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"

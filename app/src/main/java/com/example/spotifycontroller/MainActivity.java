@@ -287,7 +287,13 @@ public class MainActivity extends AppCompatActivity {
             JSONArray playlists = GET("https://api.spotify.com/v1/me/playlists", "").getJSONArray("items"); // get user's playlist data
             for (int i=0; i<playlists.length(); i++) { // for each track in playlist
                 JSONObject playlist = playlists.getJSONObject(i);
-                this.playlists.add(new Playlist(playlist.getString("id"), playlist.getString("name")));
+
+                String id = playlist.getString("id");
+                String name = playlist.getString("name");
+                String description = playlist.getString("description");;
+                int numberOfTracks = Integer.parseInt(playlist.getJSONObject("tracks").getString("total"));
+
+                this.playlists.add(new Playlist(id, name, description, numberOfTracks));
             }
             playlistsRecyclerViewAdapter.notifyItemInserted(0);
 
