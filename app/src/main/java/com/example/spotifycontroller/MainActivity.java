@@ -12,6 +12,9 @@ import android.os.Bundle;
 
 // for Google Maps Location Services
 import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority;
 import com.google.android.gms.tasks.OnCompleteListener;
@@ -24,6 +27,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.JSONArray;
 
+import android.os.Looper;
 import android.util.Log;
 import android.content.Intent;
 import android.location.Location;
@@ -58,6 +62,9 @@ public class MainActivity extends AppCompatActivity {
     static Thread thread;
     static Thread nextThread;
 
+    //static boolean isCrossfadeEnabled = false;
+    //static int crossFadeDuration;
+
     FusedLocationProviderClient fusedLocationProviderClient;
     Location lastKnownLocation;
 
@@ -84,7 +91,7 @@ public class MainActivity extends AppCompatActivity {
         public void run() {
             nextThread = new actionAtEndOfTrack(); // creates the next instance of this class prematurely, so that it can be started in static methods
 
-            if (timeToWait < 500) {
+            if (timeToWait < 1000) {
                 return;
             }
 
@@ -104,7 +111,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        Switch toggle = (Switch) findViewById(R.id.switchEnable);
+        Switch toggle = findViewById(R.id.switchEnable);
         if (toggle != null) {
             toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
                 public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
@@ -112,11 +119,21 @@ public class MainActivity extends AppCompatActivity {
                     active = isChecked;
 
                     if (isChecked) {
-                        getPlaylistTracks(selectedPlaylistID);
-                        playerApi.resume();
+                        if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+
+                            getPlaylistTracks(selectedPlaylistID);
+                            playerApi.resume();
+                            startLocationUpdates();
+                        }
+                        else {
+                            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44);
+                        }
                     }
                     else {
-
+                        if (thread != null) {
+                            thread.interrupt();
+                            stopLocationUpdates();
+                        }
                     }
 
                 }
@@ -128,11 +145,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
 
-        //TODO move this to trigger when made
-        if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_DENIED) {
-            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44);
-        }
-
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
         nextThread = new actionAtEndOfTrack();
 
@@ -143,7 +155,7 @@ public class MainActivity extends AppCompatActivity {
         // setup playlistsRecyclerView
         playlists = new ArrayList<>();
         playlistsRecyclerViewAdapter = new PlaylistsAdapter(playlists);
-        RecyclerView playlistsRecyclerView = (RecyclerView) findViewById(R.id.recyclerPlaylists);
+        RecyclerView playlistsRecyclerView = findViewById(R.id.recyclerPlaylists);
         playlistsRecyclerView.setAdapter(playlistsRecyclerViewAdapter);
         playlistsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
 
@@ -162,6 +174,25 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        switch (requestCode) {
+            case 44: // ACCESS_FINE_LOCATION
+
+                Switch toggle = findViewById(R.id.switchEnable);
+
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    getPlaylistTracks(selectedPlaylistID);
+                    playerApi.resume();
+                    startLocationUpdates();
+                }  else {
+                    toggle.setChecked(false);
+                }
+        }
+    }
+
     private void connected() { // run when Spotify SDK connection established
 
         playerApi = mSpotifyAppRemote.getPlayerApi();
@@ -172,6 +203,15 @@ public class MainActivity extends AppCompatActivity {
         }
         service = new Intent(this, ReceiverService.class);
         this.startService(service);
+
+        /*CallResult<CrossfadeState> crossfadeStateCall = playerApi.getCrossfadeState();
+        Result<CrossfadeState> crossfadeStateResult = crossfadeStateCall.await(10, TimeUnit.SECONDS);
+        if (crossfadeStateResult.isSuccessful()) {
+            CrossfadeState crossfadeState = crossfadeStateResult.getData();
+            isCrossfadeEnabled = crossfadeState.isEnabled;
+            crossFadeDuration = crossfadeState.duration;
+            Log.e("", ""+crossFadeDuration);
+        }*/
 
     }
 
@@ -193,8 +233,16 @@ public class MainActivity extends AppCompatActivity {
                     conn.setRequestProperty("Authorization",  "Bearer " + token);
 
                     if (conn.getResponseCode() != 200) { //400 bad request, 401 unauthorised, 429 too many requests
-                        Log.e(TAG, endpoint+id);
-                        throw new RuntimeException("Failed : HTTP error code : " + conn.getResponseCode());
+
+                        switch (conn.getResponseCode()) {
+                            case 400:
+                                Log.e(TAG, "HTTP Error 400: Bad Request ("+endpoint+id+")");
+                                break;
+
+                            default:
+                                Log.e(TAG, endpoint+id);
+                                throw new RuntimeException("Failed : HTTP error code : " + conn.getResponseCode());
+                        }
                     }
 
                     BufferedReader br = new BufferedReader(new InputStreamReader((conn.getInputStream())));
@@ -267,7 +315,6 @@ public class MainActivity extends AppCompatActivity {
                 Track track = new Track(trackInfo.getString("name"), trackInfo.getString("id"));
                 this.playlist.add(track);
             }
-            Log.e(TAG, "["+this.playlist.get(0).name+", "+this.playlist.get(0).id+", "+this.playlist.get(0).energy+"]"); //DEBUG
         }
         catch (JSONException e) {
             Log.e(TAG, "Map does not exist in JSONObject");
@@ -285,6 +332,9 @@ public class MainActivity extends AppCompatActivity {
         }
         catch (JSONException e) {
             Log.e(TAG, "Map does not exist in trackAnalysis JSONObject");
+            return null;
+        }
+        catch (NullPointerException e) {
             return null;
         }
     }
@@ -386,16 +436,44 @@ public class MainActivity extends AppCompatActivity {
 
     // GPS LOCATION
 
+    LocationCallback locationCallback = new LocationCallback() {
+        @Override
+        public void onLocationResult(@NonNull LocationResult locationResult) {
+            super.onLocationResult(locationResult);
+
+            locationUpdated(locationResult.getLastLocation());
+        }
+    };
+
+    private void startLocationUpdates() {
+
+        LocationRequest locationRequest = LocationRequest.create();
+        locationRequest.setPriority(Priority.PRIORITY_BALANCED_POWER_ACCURACY);
+        locationRequest.setInterval(5000);
+        locationRequest.setFastestInterval(5000);
+        locationRequest.setSmallestDisplacement(0); //DEBUG
+
+        try {
+            fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+        }
+        catch (SecurityException e) {
+            Log.e(TAG, "Invalid permission to requestLocationUpdates");
+        }
+
+    }
+
+    private void stopLocationUpdates() {
+        fusedLocationProviderClient.removeLocationUpdates(locationCallback);
+    }
+
     private void getLocation() {
 
         if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_DENIED) {
-            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44);
             return;
         }
 
         //TEMP
         TextView textLocation = findViewById(R.id.location);
-        TextView textSpeed = findViewById(R.id.data);
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -411,32 +489,7 @@ public class MainActivity extends AppCompatActivity {
 
                     Location currentLocation = task.getResult(); // get Location
                     if (currentLocation != null) {
-                        Log.e(TAG, "lat:"+currentLocation.getLatitude()+" long:"+currentLocation.getLongitude());
-
-                        if (lastKnownLocation != null) {
-                            // calculate velocity
-                            float distanceTravelled = currentLocation.distanceTo(lastKnownLocation);
-                            float timePassed = (SystemClock.elapsedRealtimeNanos() - lastKnownLocation.getElapsedRealtimeNanos()) / 1000000000; //in ms
-                            currentVelocity = distanceTravelled / timePassed;
-
-                            //TEMP
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    textSpeed.setText("distance: "+distanceTravelled+"m\ntime :"+timePassed+"s\nspeed: "+currentVelocity+"m/s\n\nenergy: "+(currentVelocity/31.2928));
-                                }
-                            });
-                        }
-
-                        //TEMP
-                        runOnUiThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                textLocation.setText("lat:"+currentLocation.getLatitude()+"\nlong:"+currentLocation.getLongitude());
-                            }
-                        });
-
-                        lastKnownLocation = currentLocation;
+                        locationUpdated(currentLocation);
                     }
                     else {
                         Log.e(TAG, "Location is null");
@@ -448,6 +501,38 @@ public class MainActivity extends AppCompatActivity {
             Log.e(TAG, "Security Exception");
         }
 
+    }
+
+    private void locationUpdated(Location newLocation) {
+        Log.e(TAG, "lat:"+newLocation.getLatitude()+" long:"+newLocation.getLongitude());
+
+        TextView textLocation = findViewById(R.id.location);
+        TextView textSpeed = findViewById(R.id.data);
+
+        if (lastKnownLocation != null) {
+            // calculate velocity
+            float distanceTravelled = newLocation.distanceTo(lastKnownLocation);
+            float timePassed = (SystemClock.elapsedRealtimeNanos() - lastKnownLocation.getElapsedRealtimeNanos()) / 1000000000; //in ms
+            currentVelocity = distanceTravelled / timePassed;
+
+            //TEMP
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    textSpeed.setText("distance: "+distanceTravelled+"m\ntime :"+timePassed+"s\nspeed: "+currentVelocity+"m/s ("+(currentVelocity*2.23694)+"mph)\n\nenergy: "+(currentVelocity/31.2928));
+                }
+            });
+        }
+
+        //TEMP
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                textLocation.setText("lat:"+newLocation.getLatitude()+"\nlong:"+newLocation.getLongitude());
+            }
+        });
+
+        lastKnownLocation = newLocation;
     }
 
     //TEMP
@@ -462,17 +547,28 @@ public class MainActivity extends AppCompatActivity {
         String selectedPlaylist = textView.getText().toString();
 
         Switch toggle = (Switch) findViewById(R.id.switchEnable);
+
         if (toggle.isChecked()) {
             return;
         }
 
-        view.setBackgroundColor(0x8800AA00);
         if (previouslySelectedPlaylist != null) {
-            previouslySelectedPlaylist.setBackgroundColor(0x00000000);
+            previouslySelectedPlaylist.setBackgroundColor(0x00000000); // deselect previous selection
         }
         else {
             toggle.setEnabled(true);
         }
+
+        if (previouslySelectedPlaylist == view) { // selected playlist is clicked
+
+            // deselect
+            previouslySelectedPlaylist = null;
+            selectedPlaylistID = null;
+            toggle.setEnabled(false);
+            return;
+        }
+        view.setBackgroundColor(0x8800AA00);
+
 
         // get ID of playlist
         for (int i=0; i<playlists.size(); i++) {
