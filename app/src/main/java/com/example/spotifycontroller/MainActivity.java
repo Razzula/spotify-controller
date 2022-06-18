@@ -15,14 +15,9 @@ import com.google.android.gms.location.Priority;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 // for Spotify SDK
-import com.spotify.android.appremote.api.ConnectionParams;
-import com.spotify.android.appremote.api.Connector;
 import com.spotify.android.appremote.api.SpotifyAppRemote;
 import com.spotify.android.appremote.api.PlayerApi;
 // for Spotify Web API
-import com.spotify.sdk.android.auth.AuthorizationClient;
-import com.spotify.sdk.android.auth.AuthorizationRequest;
-import com.spotify.sdk.android.auth.AuthorizationResponse;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.JSONArray;
@@ -47,12 +42,8 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
 
-    private static final String CLIENT_ID = "c3ea15ea37eb4121a64ee8af3521f832";
-    private static final String REDIRECT_URI = "com.example.spotifycontroller://callback";
-    private static final int REQUEST_CODE = 1337;
-    private static final String SCOPES = "user-read-email,user-read-private,playlist-read-private";
-    private SpotifyAppRemote mSpotifyAppRemote;
-    private static String token;
+    public static SpotifyAppRemote mSpotifyAppRemote;
+    public static String token;
 
     Intent service;
     static PlayerApi playerApi;
@@ -119,36 +110,9 @@ public class MainActivity extends AppCompatActivity {
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
         nextThread = new actionAtEndOfTrack();
 
-        // SPOTIFY SDK
-        ConnectionParams connectionParams =
-                new ConnectionParams.Builder(CLIENT_ID)
-                        .setRedirectUri(REDIRECT_URI)
-                        .showAuthView(true)
-                        .build();
+        token = getIntent().getStringExtra("token");
 
-        SpotifyAppRemote.connect(this, connectionParams,
-                new Connector.ConnectionListener() {
-
-                    @Override
-                    public void onConnected(SpotifyAppRemote spotifyAppRemote) {
-                        mSpotifyAppRemote = spotifyAppRemote;
-
-                        connected();
-                    }
-
-                    @Override
-                    public void onFailure(Throwable throwable) {
-                        Log.e("MainActivity", throwable.getMessage(), throwable);
-
-                        // Handle errors here
-                    }
-                });
-
-        //SPOTIFY WEB API
-        AuthorizationRequest.Builder builder = new AuthorizationRequest.Builder(CLIENT_ID, AuthorizationResponse.Type.TOKEN, REDIRECT_URI);
-        builder.setScopes(new String[]{SCOPES});
-        AuthorizationRequest request = builder.build();
-        AuthorizationClient.openLoginActivity(this, REQUEST_CODE, request);
+        getPlaylistData();
 
     }
 
@@ -174,35 +138,6 @@ public class MainActivity extends AppCompatActivity {
         service = new Intent(this, ReceiverService.class);
         this.startService(service);
 
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
-        super.onActivityResult(requestCode, resultCode, intent);
-
-        // Check if result comes from the correct activity
-        if (requestCode == REQUEST_CODE) {
-            AuthorizationResponse response = AuthorizationClient.getResponse(resultCode, intent);
-
-            switch (response.getType()) {
-                // Response was successful and contains auth token
-                case TOKEN:
-                    token = response.getAccessToken();
-
-                    valid = true;
-                    getPlaylistData();
-                    break;
-
-                // Auth flow returned an error
-                case ERROR:
-                    // Handle error response
-                    break;
-
-                // Most likely auth flow was cancelled
-                default:
-                    // Handle other cases
-            }
-        }
     }
 
     // INTERACTION WITH SPOTIFY WEB API
