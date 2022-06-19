@@ -65,6 +65,7 @@ public class MainActivity extends AppCompatActivity {
     //static boolean isCrossfadeEnabled = false;
     //static int crossFadeDuration;
 
+    AccelerometerEventListener accelerometerEventListener;
     FusedLocationProviderClient fusedLocationProviderClient;
     Location lastKnownLocation;
 
@@ -160,6 +161,10 @@ public class MainActivity extends AppCompatActivity {
         playlistsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
 
         getUserPlaylists();
+
+        accelerometerEventListener = new AccelerometerEventListener(this);
+        accelerometerEventListener.startListening();
+
 
     }
 
@@ -510,7 +515,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void locationUpdated(Location newLocation) {
-        Log.e(TAG, "lat:"+newLocation.getLatitude()+" long:"+newLocation.getLongitude());
 
         TextView textLocation = findViewById(R.id.location);
         TextView textSpeed = findViewById(R.id.data);
@@ -521,11 +525,17 @@ public class MainActivity extends AppCompatActivity {
             float timePassed = (SystemClock.elapsedRealtimeNanos() - lastKnownLocation.getElapsedRealtimeNanos()) / 1000000000; //in ms
             currentVelocity = distanceTravelled / timePassed;
 
+            Log.e(TAG, "GPS: "+currentVelocity+"m/s ("+(currentVelocity*2.23694)+"mph)");
+            float tempVelocity = accelerometerEventListener.getVelocity();
+            Log.e(TAG, "ACC: "+tempVelocity+"m/s ("+(tempVelocity*2.23694)+"mph)");
+
             //TEMP
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    textSpeed.setText("distance: "+distanceTravelled+"m\ntime :"+timePassed+"s\nspeed: "+currentVelocity+"m/s ("+(currentVelocity*2.23694)+"mph)\n\nenergy: "+(currentVelocity/31.2928));
+                    textSpeed.setText("time :"+timePassed+"s\nGPS: "+currentVelocity+"m/s ("+Math.round(currentVelocity*2.23694*100)/100+"mph)"
+                        +"\nACC: "+tempVelocity+"m/s ("+Math.round(tempVelocity*2.23694*100)/100+"mph)"+"\nDELTA: "+Math.abs(currentVelocity-tempVelocity)
+                        +"\n\nenergy: "+(currentVelocity/31.2928));
                 }
             });
         }
