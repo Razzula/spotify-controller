@@ -12,15 +12,20 @@ import android.widget.TextView;
 
 public class AccelerometerEventListener implements SensorEventListener {
 
-    double calibration = Double.NaN;
+    double[] calibration = {0,0,0};
     private SensorManager sensorManager;
-    private boolean color = false;
-    private TextView view;
     private long lastUpdate;
 
-    float appliedAcceleration = 0;
-    float currentAcceleration = 0;
-    float velocity = 0;
+    int count = 0;
+
+    //float appliedAcceleration = 0;
+    //float currentAcceleration = 0;
+    //float[] acceleration = {0,0,0};
+    float[] velocity = {0,0,0};
+    double speed;
+
+    double[] appliedAcceleration = {0, 0, 0};
+    double[] currentAcceleration;
 
     public AccelerometerEventListener(Context context) {
         lastUpdate = System.currentTimeMillis();
@@ -33,34 +38,43 @@ public class AccelerometerEventListener implements SensorEventListener {
         double x = sensorEvent.values[0];
         double y = sensorEvent.values[1];
         double z = sensorEvent.values[2];
-        double a = Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2) + Math.pow(z, 2));
-        if (calibration == Double.NaN)
-            calibration = a;
-        else {
-            updateVelocity();
-            currentAcceleration = (float) a;
+
+        //CALIBRATE
+        if (count < 1000) {
+            double[] acceleration = {x, y, z};
+            for (int i=0; i<3; i++) {
+                calibration[i] += acceleration[i];
+            }
+            count += 1;
         }
 
-    }
+        //CALCULATE
+        else {
 
-    private void updateVelocity() {
+            if (currentAcceleration != null) {
+                if (appliedAcceleration != null) {
+                    long currentTime = System.currentTimeMillis();
+                    for (int i = 0; i < 3; i++) {
+                        velocity[i] += (appliedAcceleration[i] - (calibration[i] / count)) * (currentTime - lastUpdate) / 1000;
+                    }
+                    lastUpdate = currentTime;
 
-        long timeNow = System.currentTimeMillis();
-        long timeDelta = timeNow - lastUpdate;
-        lastUpdate = timeNow;
+                    speed = Math.sqrt(Math.pow(velocity[0], 2) + Math.pow(velocity[1], 2) + Math.pow(velocity[2], 2));
 
-        float deltaVelocity = appliedAcceleration * timeDelta / 1000;
-        appliedAcceleration = currentAcceleration;
-
-        velocity = deltaVelocity;
-        //Log.e("", "ACC: "+velocity);
+                    Log.e("", "" + speed);
+                }
+                appliedAcceleration = currentAcceleration;
+            }
+            double[] acceleration = {x,y,z};
+            currentAcceleration = acceleration;
+        }
 
     }
 
     public void startListening() {
         sensorManager.registerListener(this,
                 sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION),
-                SensorManager.SENSOR_DELAY_NORMAL);
+                SensorManager.SENSOR_DELAY_FASTEST);
     }
 
     protected void stopListening() {
@@ -73,6 +87,6 @@ public class AccelerometerEventListener implements SensorEventListener {
     }
 
     public float getVelocity() {
-        return velocity;
+        return (float) speed;
     }
 }

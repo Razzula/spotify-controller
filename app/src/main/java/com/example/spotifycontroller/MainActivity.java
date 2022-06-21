@@ -58,14 +58,15 @@ public class MainActivity extends AppCompatActivity {
 
     static int currentTrackLength = 0;
     static float currentVelocity = 0;
-    static long timeToWait = 0;
-    static Thread thread;
-    static Thread nextThread;
+    //static long timeToWait = 0;
+
+    static actionAtEndOfTrack endOfTrackAction;
+    static actionTowardsEndOfTrack startLocationTracking;
 
     //static boolean isCrossfadeEnabled = false;
     //static int crossFadeDuration;
 
-    AccelerometerEventListener accelerometerEventListener;
+    //AccelerometerEventListener accelerometerEventListener;
     FusedLocationProviderClient fusedLocationProviderClient;
     Location lastKnownLocation;
 
@@ -89,8 +90,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public class actionAtEndOfTrack extends Thread {
+        long timeToWait = 0;
+
         public void run() {
-            nextThread = new actionAtEndOfTrack(); // creates the next instance of this class prematurely, so that it can be started in static methods
+            ////nextEndOfTrackAction = new actionAtEndOfTrack(); // creates the next instance of this class prematurely, so that it can be started in static methods
 
             if (timeToWait < 1000) {
                 return;
@@ -99,11 +102,39 @@ public class MainActivity extends AppCompatActivity {
             try {
                 sleep(timeToWait); // wait until near end of song
                 getLocation();
-                queueNextTrack();
+                //stopLocationUpdates();
 
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
+        }
+
+        public void setTimeToWait(long timeToWait) {
+            this.timeToWait = timeToWait;
+        }
+    }
+
+    public class actionTowardsEndOfTrack extends Thread {
+        long timeToWait = 0;
+
+        public void run() {
+            ////nextStartLocationTracking = new actionTowardsEndOfTrack(); // creates the next instance of this class prematurely, so that it can be started in static methods
+
+            if (timeToWait < 0) {
+                return;
+            }
+
+            try {
+                sleep(timeToWait); // wait until near end of song
+                startLocationUpdates();
+
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
+        public void setTimeToWait(long timeToWait) {
+            this.timeToWait = timeToWait;
         }
     }
 
@@ -124,15 +155,15 @@ public class MainActivity extends AppCompatActivity {
 
                             getPlaylistTracks(selectedPlaylistID);
                             playerApi.resume();
-                            startLocationUpdates();
+                            //startLocationUpdates();
                         }
                         else {
                             ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44);
                         }
                     }
                     else {
-                        if (thread != null) {
-                            thread.interrupt();
+                        if (endOfTrackAction != null) {
+                            endOfTrackAction.interrupt();
                             stopLocationUpdates();
                         }
                     }
@@ -147,7 +178,8 @@ public class MainActivity extends AppCompatActivity {
         super.onStart();
 
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
-        nextThread = new actionAtEndOfTrack();
+        ////nextEndOfTrackAction = new actionAtEndOfTrack();
+        ////nextStartLocationTracking = new actionTowardsEndOfTrack();
 
         token = getIntent().getStringExtra("token");
 
@@ -162,8 +194,8 @@ public class MainActivity extends AppCompatActivity {
 
         getUserPlaylists();
 
-        accelerometerEventListener = new AccelerometerEventListener(this);
-        accelerometerEventListener.startListening();
+        //accelerometerEventListener = new AccelerometerEventListener(this);
+        //accelerometerEventListener.startListening();
 
 
     }
@@ -191,7 +223,7 @@ public class MainActivity extends AppCompatActivity {
                 if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     getPlaylistTracks(selectedPlaylistID);
                     playerApi.resume();
-                    startLocationUpdates();
+                    //startLocationUpdates();
                 }  else {
                     toggle.setChecked(false);
                 }
@@ -206,6 +238,7 @@ public class MainActivity extends AppCompatActivity {
         if (service != null) {
             this.stopService(service);
         }
+        ReceiverService.setContext(this);
         service = new Intent(this, ReceiverService.class);
         this.startService(service);
 
@@ -370,7 +403,7 @@ public class MainActivity extends AppCompatActivity {
 
     // INTERACTION WITH SPOTIFY SDK
 
-    public static void onMetadataChange(String trackID, int trackLength, String trackName) {
+    public void onMetadataChange(String trackID, int trackLength, String trackName) {
 
         currentTrackLength = trackLength;
 
@@ -384,33 +417,69 @@ public class MainActivity extends AppCompatActivity {
 
         if (active) {
             playerApi.resume();
+            stopLocationUpdates();
         }
     }
 
-    public static void onPlaybackStateChange(boolean playing, int playbackPos) {
+    public void onPlaybackStateChange(boolean playing, int playbackPos) {
 
         if (active) {
             if (playing) {
                 Log.e(TAG, "PLAYBACK STARTED");
+                long timeToWait;
 
+                // start thread to queue next track at end of current track
                 timeToWait = currentTrackLength - playbackPos - 10000; // time (in ms) until 10s from end of track
                 Log.e(TAG, "" + timeToWait);
 
-                if (thread != null) {
-                    thread.interrupt();
+                if (endOfTrackAction != null) {
+                    endOfTrackAction.interrupt();
                 }
-                thread = nextThread;
+                endOfTrackAction = new actionAtEndOfTrack();
                 try {
-                    thread.start();
+                    endOfTrackAction.setTimeToWait(timeToWait);
+                    endOfTrackAction.start();
                 } catch (IllegalThreadStateException e) {
                     Log.e(TAG, "Illegal State Exception");
                 }
+
+                // start thread to start location updates towards end of track
+                timeToWait = currentTrackLength - playbackPos - 60000; // time (in ms) until 60s from end of track
+                Log.e(TAG, "" + timeToWait);
+
+                if (startLocationTracking != null) {
+                    startLocationTracking.interrupt();
+                }
+
+                if (currentTrackLength - playbackPos < 10000) {
+                    return;
+                }
+
+                if (timeToWait < 0) {
+                    startLocationUpdates();
+                }
+                else {
+
+                    startLocationTracking = new actionTowardsEndOfTrack();
+                    try {
+                        startLocationTracking.setTimeToWait(timeToWait);
+                        startLocationTracking.start();
+                    } catch (IllegalThreadStateException e) {
+                        Log.e(TAG, "Illegal State Exception");
+                    }
+                }
+
+
             } else {
                 Log.e(TAG, "PLAYBACK STOPPED");
 
-                if (thread != null) {
-                    thread.interrupt();
+                if (endOfTrackAction != null) {
+                    endOfTrackAction.interrupt();
                 }
+                if (startLocationTracking != null) {
+                    startLocationTracking.interrupt();
+                }
+                stopLocationUpdates();
             }
         }
     }
@@ -439,6 +508,7 @@ public class MainActivity extends AppCompatActivity {
             //queue
             playerApi.queue("spotify:track:" + nextTrack.id);
             Log.e(TAG, "QUEUED " + nextTrack.name);
+
         }
         else {
             Log.e(TAG, "Playlist empty");
@@ -459,8 +529,8 @@ public class MainActivity extends AppCompatActivity {
     private void startLocationUpdates() {
 
         LocationRequest locationRequest = LocationRequest.create();
-        locationRequest.setPriority(Priority.PRIORITY_BALANCED_POWER_ACCURACY);
-        locationRequest.setInterval(5000);
+        locationRequest.setPriority(Priority.PRIORITY_HIGH_ACCURACY);
+        locationRequest.setInterval(8000);
         locationRequest.setFastestInterval(5000);
         locationRequest.setSmallestDisplacement(0); //DEBUG
 
@@ -470,11 +540,13 @@ public class MainActivity extends AppCompatActivity {
         catch (SecurityException e) {
             Log.e(TAG, "Invalid permission to requestLocationUpdates");
         }
+        Log.e(TAG, "Location updates started");
 
     }
 
     private void stopLocationUpdates() {
         fusedLocationProviderClient.removeLocationUpdates(locationCallback);
+        Log.e(TAG, "Location updates halted");
     }
 
     private void getLocation() {
@@ -505,6 +577,8 @@ public class MainActivity extends AppCompatActivity {
                     else {
                         Log.e(TAG, "Location is null");
                     }
+
+                    queueNextTrack();
                 }
             });
         }
@@ -523,19 +597,23 @@ public class MainActivity extends AppCompatActivity {
             // calculate velocity
             float distanceTravelled = newLocation.distanceTo(lastKnownLocation);
             float timePassed = (SystemClock.elapsedRealtimeNanos() - lastKnownLocation.getElapsedRealtimeNanos()) / 1000000000; //in ms
-            currentVelocity = distanceTravelled / timePassed;
+
+            if (distanceTravelled / timePassed != Float.NaN) {
+                currentVelocity = distanceTravelled / timePassed;
+            }
+            else {
+                Log.e(TAG, "NaN: "+distanceTravelled+", "+timePassed);
+            }
 
             Log.e(TAG, "GPS: "+currentVelocity+"m/s ("+(currentVelocity*2.23694)+"mph)");
-            float tempVelocity = accelerometerEventListener.getVelocity();
-            Log.e(TAG, "ACC: "+tempVelocity+"m/s ("+(tempVelocity*2.23694)+"mph)");
+            //float tempVelocity = accelerometerEventListener.getVelocity();
+            //Log.e(TAG, "ACC: "+tempVelocity+"m/s ("+(tempVelocity*2.23694)+"mph)");
 
             //TEMP
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    textSpeed.setText("time :"+timePassed+"s\nGPS: "+currentVelocity+"m/s ("+Math.round(currentVelocity*2.23694*100)/100+"mph)"
-                        +"\nACC: "+tempVelocity+"m/s ("+Math.round(tempVelocity*2.23694*100)/100+"mph)"+"\nDELTA: "+Math.abs(currentVelocity-tempVelocity)
-                        +"\n\nenergy: "+(currentVelocity/31.2928));
+                    textSpeed.setText("time :"+timePassed+"s\nGPS: "+currentVelocity+"m/s ("+Math.round(currentVelocity*2.23694*100)/100+"mph)"+"\n\nenergy: "+(currentVelocity/31.2928));
                 }
             });
         }

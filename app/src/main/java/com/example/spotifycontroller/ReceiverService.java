@@ -17,6 +17,11 @@ public class ReceiverService extends Service {
     }
 
     private static BroadcastReceiver receiver;
+    private static MainActivity context;
+
+    public static void setContext(MainActivity context) {
+        ReceiverService.context = context;
+    }
 
     @Override
     public IBinder onBind(Intent arg0)
@@ -52,13 +57,13 @@ public class ReceiverService extends Service {
                     String trackName = intent.getStringExtra("track");
                     int trackLengthInSec = intent.getIntExtra("length", 0);
 
-                    MainActivity.onMetadataChange(trackId, trackLengthInSec, trackName);
+                    ReceiverService.context.onMetadataChange(trackId, trackLengthInSec, trackName);
                 }
                 else if (action.equals(BroadcastTypes.PLAYBACK_STATE_CHANGED)) {
                     boolean playing = intent.getBooleanExtra("playing", false);
                     int positionInMs = intent.getIntExtra("playbackPosition", 0);
 
-                    MainActivity.onPlaybackStateChange(playing, positionInMs);
+                    ReceiverService.context.onPlaybackStateChange(playing, positionInMs);
                 }
             }
         };
