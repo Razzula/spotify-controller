@@ -32,6 +32,7 @@ import android.util.Log;
 import android.content.Intent;
 import android.location.Location;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.CompoundButton;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -142,6 +143,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         Switch toggle = findViewById(R.id.switchEnable);
         if (toggle != null) {
@@ -430,7 +432,7 @@ public class MainActivity extends AppCompatActivity {
 
                 // start thread to queue next track at end of current track
                 timeToWait = currentTrackLength - playbackPos - 10000; // time (in ms) until 10s from end of track
-                Log.e(TAG, "" + timeToWait);
+                //Log.d(TAG, "" + timeToWait);
 
                 if (endOfTrackAction != null) {
                     endOfTrackAction.interrupt();
@@ -445,7 +447,7 @@ public class MainActivity extends AppCompatActivity {
 
                 // start thread to start location updates towards end of track
                 timeToWait = currentTrackLength - playbackPos - 60000; // time (in ms) until 60s from end of track
-                Log.e(TAG, "" + timeToWait);
+                //Log.d(TAG, "" + timeToWait);
 
                 if (startLocationTracking != null) {
                     startLocationTracking.interrupt();
@@ -598,10 +600,12 @@ public class MainActivity extends AppCompatActivity {
             float distanceTravelled = newLocation.distanceTo(lastKnownLocation);
             float timePassed = (SystemClock.elapsedRealtimeNanos() - lastKnownLocation.getElapsedRealtimeNanos()) / 1000000000; //in ms
 
-            if (distanceTravelled / timePassed != Float.NaN) {
+            Float temp = distanceTravelled / timePassed;
+            if (!temp.isNaN()) {
                 currentVelocity = distanceTravelled / timePassed;
             }
             else {
+                currentVelocity = 0f;
                 Log.e(TAG, "NaN: "+distanceTravelled+", "+timePassed);
             }
 
