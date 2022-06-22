@@ -5,6 +5,7 @@
 
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:remove="android:maxSdkVersion" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:remove="android:maxSdkVersion" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" tools:remove="android:maxSdkVersion" />
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
@@ -31,10 +32,6 @@
             android:name=".MainActivity"
             android:exported="false">
         </activity>
-
-        <service
-            android:name=".ReceiverService"
-            android:enabled="true"></service>
     </application>
 
 </manifest>

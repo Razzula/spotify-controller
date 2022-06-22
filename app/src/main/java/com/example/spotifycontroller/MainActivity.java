@@ -5,9 +5,14 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
+import androidx.work.WorkRequest;
 
 import android.Manifest;
+import android.app.IntentService;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 
 // for Google Maps Location Services
@@ -50,92 +55,32 @@ import java.util.stream.Collectors;
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
+    public static MainActivity context;
 
     public static SpotifyAppRemote mSpotifyAppRemote;
     public static String token;
 
-    Intent service;
     static PlayerApi playerApi;
-
-    static int currentTrackLength = 0;
-    static float currentVelocity = 0;
-    //static long timeToWait = 0;
-
-    static actionAtEndOfTrack endOfTrackAction;
-    static actionTowardsEndOfTrack startLocationTracking;
 
     //static boolean isCrossfadeEnabled = false;
     //static int crossFadeDuration;
 
-    //AccelerometerEventListener accelerometerEventListener;
-    FusedLocationProviderClient fusedLocationProviderClient;
-    Location lastKnownLocation;
-
-    static boolean active = false;
+    boolean active = false;
 
     ArrayList<Playlist> playlists;
     PlaylistsAdapter playlistsRecyclerViewAdapter;
     ArrayList<Track> playlist;
     String selectedPlaylistID;
-    private static class Track {
+    public static class Track {
 
         public String name;
         public String id;
         public float energy;
 
-        private Track(String name, String id) {
+        public Track(String name, String id) {
             this.name = name;
             this.id = id;
 
-        }
-    }
-
-    public class actionAtEndOfTrack extends Thread {
-        long timeToWait = 0;
-
-        public void run() {
-            ////nextEndOfTrackAction = new actionAtEndOfTrack(); // creates the next instance of this class prematurely, so that it can be started in static methods
-
-            if (timeToWait < 1000) {
-                return;
-            }
-
-            try {
-                sleep(timeToWait); // wait until near end of song
-                getLocation();
-                //stopLocationUpdates();
-
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-
-        public void setTimeToWait(long timeToWait) {
-            this.timeToWait = timeToWait;
-        }
-    }
-
-    public class actionTowardsEndOfTrack extends Thread {
-        long timeToWait = 0;
-
-        public void run() {
-            ////nextStartLocationTracking = new actionTowardsEndOfTrack(); // creates the next instance of this class prematurely, so that it can be started in static methods
-
-            if (timeToWait < 0) {
-                return;
-            }
-
-            try {
-                sleep(timeToWait); // wait until near end of song
-                startLocationUpdates();
-
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-
-        public void setTimeToWait(long timeToWait) {
-            this.timeToWait = timeToWait;
         }
     }
 
@@ -143,49 +88,10 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        context = this;
 
-        Switch toggle = findViewById(R.id.switchEnable);
-        if (toggle != null) {
-            toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-
-                    active = isChecked;
-
-                    if (isChecked) {
-                        if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-
-                            getPlaylistTracks(selectedPlaylistID);
-                            playerApi.resume();
-                            //startLocationUpdates();
-                        }
-                        else {
-                            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44);
-                        }
-                    }
-                    else {
-                        if (endOfTrackAction != null) {
-                            endOfTrackAction.interrupt();
-                            stopLocationUpdates();
-                        }
-                    }
-
-                }
-            });
-        }
-    }
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-
-        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
-        ////nextEndOfTrackAction = new actionAtEndOfTrack();
-        ////nextStartLocationTracking = new actionTowardsEndOfTrack();
-
+        playerApi = mSpotifyAppRemote.getPlayerApi();
         token = getIntent().getStringExtra("token");
-
-        connected();
 
         // setup playlistsRecyclerView
         playlists = new ArrayList<>();
@@ -196,63 +102,95 @@ public class MainActivity extends AppCompatActivity {
 
         getUserPlaylists();
 
-        //accelerometerEventListener = new AccelerometerEventListener(this);
-        //accelerometerEventListener.startListening();
+        // switch
+        Switch toggle = findViewById(R.id.switchEnable);
+        if (toggle != null) {
+            toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
 
+                    active = isChecked;
 
+                    if (isChecked) {
+
+                        if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_DENIED) {
+
+                                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 45);
+                                    return;
+                                }
+                            }
+                            getPlaylistTracks(selectedPlaylistID);
+                            playerApi.resume();
+
+                            WorkRequest testWorkRequest = new OneTimeWorkRequest.Builder(MainWorker.class).build();
+                            WorkManager.getInstance(MainActivity.context).enqueue(testWorkRequest);
+
+                        }
+                        else {
+                            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44);
+                        }
+                    }
+
+                    else {
+                        WorkManager.getInstance(MainActivity.context).cancelAllWork();
+                        MainWorker.context.onStopped();
+                    }
+
+                }
+            });
+        }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        SpotifyAppRemote.disconnect(mSpotifyAppRemote);
+    }
 
-        if (service != null) {
-            this.stopService(service);
-        }
-
+    @Override
+    protected void onDestroy() {
+        WorkManager.getInstance(MainActivity.context).cancelAllWork();
+        MainWorker.context.onStopped();
+        Log.e("", "Destroyed");
+        super.onDestroy();
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-        switch (requestCode) {
-            case 44: // ACCESS_FINE_LOCATION
+        if (requestCode == 45) {
+            Switch toggle = findViewById(R.id.switchEnable);
 
-                Switch toggle = findViewById(R.id.switchEnable);
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                getPlaylistTracks(selectedPlaylistID);
+                playerApi.resume();
 
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    getPlaylistTracks(selectedPlaylistID);
-                    playerApi.resume();
-                    //startLocationUpdates();
-                }  else {
-                    toggle.setChecked(false);
+                WorkRequest testWorkRequest = new OneTimeWorkRequest.Builder(MainWorker.class).build();
+                WorkManager.getInstance(MainActivity.context).enqueue(testWorkRequest);
+            }  else {
+                toggle.setChecked(false);
+            }
+        }
+        else if (requestCode == 44) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_DENIED) {
+
+                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 45);
+                    return;
                 }
+            }
+            getPlaylistTracks(selectedPlaylistID);
+            playerApi.resume();
+
+            WorkRequest testWorkRequest = new OneTimeWorkRequest.Builder(MainWorker.class).build();
+            WorkManager.getInstance(MainActivity.context).enqueue(testWorkRequest);
         }
-    }
-
-    private void connected() { // run when Spotify SDK connection established
-
-        playerApi = mSpotifyAppRemote.getPlayerApi();
-
-        // create background service to listen to Spotify app
-        if (service != null) {
-            this.stopService(service);
-        }
-        ReceiverService.setContext(this);
-        service = new Intent(this, ReceiverService.class);
-        this.startService(service);
-
-        /*CallResult<CrossfadeState> crossfadeStateCall = playerApi.getCrossfadeState();
-        Result<CrossfadeState> crossfadeStateResult = crossfadeStateCall.await(10, TimeUnit.SECONDS);
-        if (crossfadeStateResult.isSuccessful()) {
-            CrossfadeState crossfadeState = crossfadeStateResult.getData();
-            isCrossfadeEnabled = crossfadeState.isEnabled;
-            crossFadeDuration = crossfadeState.duration;
-            Log.e("", ""+crossFadeDuration);
-        }*/
-
     }
 
     // INTERACTION WITH SPOTIFY WEB API
@@ -371,7 +309,7 @@ public class MainActivity extends AppCompatActivity {
         Log.e(TAG, "["+this.playlist.get(0).name+", "+this.playlist.get(0).id+", "+this.playlist.get(0).energy+"]"); //DEBUG
     }
 
-    private static String getSingleTrackEnergy(String id) {
+    public static String getSingleTrackEnergy(String id) {
         JSONObject trackAnalysis = GET("https://api.spotify.com/v1/audio-features/", id);
         try {
             return trackAnalysis.get("energy").toString();
@@ -401,241 +339,6 @@ public class MainActivity extends AppCompatActivity {
         catch (JSONException e) {
             Log.e(TAG, "Map does not exist in tracksAnalyses JSONObject");
         }
-    }
-
-    // INTERACTION WITH SPOTIFY SDK
-
-    public void onMetadataChange(String trackID, int trackLength, String trackName) {
-
-        currentTrackLength = trackLength;
-
-        Log.e(TAG, "META CHANGED");
-        try {
-            String energy = getSingleTrackEnergy(trackID.split(":")[2]); // get id from URI
-            Log.e(TAG, "Playing " + trackName + ", Energy:" + energy);
-        } catch (IndexOutOfBoundsException e) {
-            Log.e(TAG, "Invalid trackID");
-        }
-
-        if (active) {
-            playerApi.resume();
-            stopLocationUpdates();
-        }
-    }
-
-    public void onPlaybackStateChange(boolean playing, int playbackPos) {
-
-        if (active) {
-            if (playing) {
-                Log.e(TAG, "PLAYBACK STARTED");
-                long timeToWait;
-
-                // start thread to queue next track at end of current track
-                timeToWait = currentTrackLength - playbackPos - 10000; // time (in ms) until 10s from end of track
-                //Log.d(TAG, "" + timeToWait);
-
-                if (endOfTrackAction != null) {
-                    endOfTrackAction.interrupt();
-                }
-                endOfTrackAction = new actionAtEndOfTrack();
-                try {
-                    endOfTrackAction.setTimeToWait(timeToWait);
-                    endOfTrackAction.start();
-                } catch (IllegalThreadStateException e) {
-                    Log.e(TAG, "Illegal State Exception");
-                }
-
-                // start thread to start location updates towards end of track
-                timeToWait = currentTrackLength - playbackPos - 60000; // time (in ms) until 60s from end of track
-                //Log.d(TAG, "" + timeToWait);
-
-                if (startLocationTracking != null) {
-                    startLocationTracking.interrupt();
-                }
-
-                if (currentTrackLength - playbackPos < 10000) {
-                    return;
-                }
-
-                if (timeToWait < 0) {
-                    startLocationUpdates();
-                }
-                else {
-
-                    startLocationTracking = new actionTowardsEndOfTrack();
-                    try {
-                        startLocationTracking.setTimeToWait(timeToWait);
-                        startLocationTracking.start();
-                    } catch (IllegalThreadStateException e) {
-                        Log.e(TAG, "Illegal State Exception");
-                    }
-                }
-
-
-            } else {
-                Log.e(TAG, "PLAYBACK STOPPED");
-
-                if (endOfTrackAction != null) {
-                    endOfTrackAction.interrupt();
-                }
-                if (startLocationTracking != null) {
-                    startLocationTracking.interrupt();
-                }
-                stopLocationUpdates();
-            }
-        }
-    }
-
-    private void queueNextTrack() {
-        float currentEnergy = currentVelocity / 31.2928f; //calculates energy as a % of car speed out of 70mph
-            /*//FOR DEBUG
-            Random rand = new Random();
-            currentEnergy = rand.nextFloat();*/
-        Log.e(TAG, "Energy: "+currentEnergy);
-
-
-        // find song based off of energy
-        if (playlist.size() > 0) {
-            float minDelta = 1;
-            Track nextTrack = new Track("", "");
-            for (int i = 0; i < playlist.size(); i++) {
-                float delta = Math.abs(currentEnergy - playlist.get(i).energy);
-                if (delta <= minDelta) {
-                    minDelta = delta;
-                    nextTrack = playlist.get(i);
-                }
-            }
-            playlist.remove(nextTrack);
-
-            //queue
-            playerApi.queue("spotify:track:" + nextTrack.id);
-            Log.e(TAG, "QUEUED " + nextTrack.name);
-
-        }
-        else {
-            Log.e(TAG, "Playlist empty");
-        }
-    }
-
-    // GPS LOCATION
-
-    LocationCallback locationCallback = new LocationCallback() {
-        @Override
-        public void onLocationResult(@NonNull LocationResult locationResult) {
-            super.onLocationResult(locationResult);
-
-            locationUpdated(locationResult.getLastLocation());
-        }
-    };
-
-    private void startLocationUpdates() {
-
-        LocationRequest locationRequest = LocationRequest.create();
-        locationRequest.setPriority(Priority.PRIORITY_HIGH_ACCURACY);
-        locationRequest.setInterval(8000);
-        locationRequest.setFastestInterval(5000);
-        locationRequest.setSmallestDisplacement(0); //DEBUG
-
-        try {
-            fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
-        }
-        catch (SecurityException e) {
-            Log.e(TAG, "Invalid permission to requestLocationUpdates");
-        }
-        Log.e(TAG, "Location updates started");
-
-    }
-
-    private void stopLocationUpdates() {
-        fusedLocationProviderClient.removeLocationUpdates(locationCallback);
-        Log.e(TAG, "Location updates halted");
-    }
-
-    private void getLocation() {
-
-        if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_DENIED) {
-            return;
-        }
-
-        //TEMP
-        TextView textLocation = findViewById(R.id.location);
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                textLocation.setText("");
-            }
-        });
-
-        try {
-
-            fusedLocationProviderClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null).addOnCompleteListener(new OnCompleteListener<Location>() {
-                @Override
-                public void onComplete(@NonNull Task<Location> task) {
-
-                    Location currentLocation = task.getResult(); // get Location
-                    if (currentLocation != null) {
-                        locationUpdated(currentLocation);
-                    }
-                    else {
-                        Log.e(TAG, "Location is null");
-                    }
-
-                    queueNextTrack();
-                }
-            });
-        }
-        catch (SecurityException e) {
-            Log.e(TAG, "Security Exception");
-        }
-
-    }
-
-    private void locationUpdated(Location newLocation) {
-
-        TextView textLocation = findViewById(R.id.location);
-        TextView textSpeed = findViewById(R.id.data);
-
-        if (lastKnownLocation != null) {
-            // calculate velocity
-            float distanceTravelled = newLocation.distanceTo(lastKnownLocation);
-            float timePassed = (SystemClock.elapsedRealtimeNanos() - lastKnownLocation.getElapsedRealtimeNanos()) / 1000000000; //in ms
-
-            Float temp = distanceTravelled / timePassed;
-            if (!temp.isNaN()) {
-                currentVelocity = distanceTravelled / timePassed;
-            }
-            else {
-                currentVelocity = 0f;
-                Log.e(TAG, "NaN: "+distanceTravelled+", "+timePassed);
-            }
-
-            Log.e(TAG, "GPS: "+currentVelocity+"m/s ("+(currentVelocity*2.23694)+"mph)");
-            //float tempVelocity = accelerometerEventListener.getVelocity();
-            //Log.e(TAG, "ACC: "+tempVelocity+"m/s ("+(tempVelocity*2.23694)+"mph)");
-
-            //TEMP
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    textSpeed.setText("time :"+timePassed+"s\nGPS: "+currentVelocity+"m/s ("+Math.round(currentVelocity*2.23694*100)/100+"mph)"+"\n\nenergy: "+(currentVelocity/31.2928));
-                }
-            });
-        }
-
-        //TEMP
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                textLocation.setText("lat:"+newLocation.getLatitude()+"\nlong:"+newLocation.getLongitude());
-            }
-        });
-
-        lastKnownLocation = newLocation;
-    }
-
-    //TEMP
-    public void forceLocationUpdate(View view) {
-        getLocation();
     }
 
     View previouslySelectedPlaylist;
