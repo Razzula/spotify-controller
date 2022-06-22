@@ -32,6 +32,10 @@
             android:name=".MainActivity"
             android:exported="false">
         </activity>
+
+        <service
+            android:name=".StopperService"
+            android:enabled="true"></service>
     </application>
 
 </manifest>

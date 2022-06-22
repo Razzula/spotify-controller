@@ -3,6 +3,8 @@ package com.example.spotifycontroller;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.work.OneTimeWorkRequest;
@@ -11,6 +13,10 @@ import androidx.work.WorkRequest;
 
 import android.Manifest;
 import android.app.IntentService;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -60,12 +66,16 @@ public class MainActivity extends AppCompatActivity {
     public static SpotifyAppRemote mSpotifyAppRemote;
     public static String token;
 
+    NotificationManager notificationManager;
+
     static PlayerApi playerApi;
 
     //static boolean isCrossfadeEnabled = false;
     //static int crossFadeDuration;
 
     boolean active = false;
+
+    String CHANNEL_ID = "test";
 
     ArrayList<Playlist> playlists;
     PlaylistsAdapter playlistsRecyclerViewAdapter;
@@ -93,7 +103,9 @@ public class MainActivity extends AppCompatActivity {
         playerApi = mSpotifyAppRemote.getPlayerApi();
         token = getIntent().getStringExtra("token");
 
-        // setup playlistsRecyclerView
+        createNotificationChannel();
+
+            // setup playlistsRecyclerView
         playlists = new ArrayList<>();
         playlistsRecyclerViewAdapter = new PlaylistsAdapter(playlists);
         RecyclerView playlistsRecyclerView = findViewById(R.id.recyclerPlaylists);
@@ -120,11 +132,8 @@ public class MainActivity extends AppCompatActivity {
                                     return;
                                 }
                             }
-                            getPlaylistTracks(selectedPlaylistID);
-                            playerApi.resume();
 
-                            WorkRequest testWorkRequest = new OneTimeWorkRequest.Builder(MainWorker.class).build();
-                            WorkManager.getInstance(MainActivity.context).enqueue(testWorkRequest);
+                            beginProcess();
 
                         }
                         else {
@@ -133,8 +142,11 @@ public class MainActivity extends AppCompatActivity {
                     }
 
                     else {
-                        WorkManager.getInstance(MainActivity.context).cancelAllWork();
-                        MainWorker.context.onStopped();
+                        WorkManager.getInstance(getApplicationContext()).cancelAllWork();
+                        if (MainWorker.context != null) {
+                            MainWorker.context.onStopped();
+                        }
+                        notificationManager.cancel(0);
                     }
 
                 }
@@ -144,20 +156,58 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onStart() {
+        Switch toggle = (Switch) findViewById(R.id.switchEnable);
+        toggle.setChecked(MainWorker.active);
+        notificationManager.cancel(0);
+
         super.onStart();
     }
 
     @Override
     protected void onStop() {
+
+        if (MainWorker.active) {
+            Intent intent = new Intent(getApplicationContext(), StopperService.class);
+            PendingIntent pendingIntent = PendingIntent.getService(getApplicationContext(), 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(getApplicationContext(), CHANNEL_ID)
+                    .setSmallIcon(R.drawable.logo)
+                    .setContentTitle("Controller is running")
+                    .setContentText("Tap to stop.")
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setOngoing(true)
+                    .setAutoCancel(true)
+                    .setContentIntent(pendingIntent);
+            NotificationManagerCompat notificationManager = NotificationManagerCompat.from(getApplicationContext());
+
+            notificationManager.notify(0, builder.build());
+        }
+
         super.onStop();
     }
 
     @Override
     protected void onDestroy() {
         WorkManager.getInstance(MainActivity.context).cancelAllWork();
-        MainWorker.context.onStopped();
+        if (MainWorker.context != null) {
+            MainWorker.context.onStopped();
+        }
+        notificationManager.cancel(0);
         Log.e("", "Destroyed");
         super.onDestroy();
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = getString(R.string.channel_name);
+            String description = getString(R.string.channel_description);
+            int importance = NotificationManager.IMPORTANCE_DEFAULT;
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
+            channel.setDescription(description);
+
+            notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(channel);
+        }
     }
 
     @Override
@@ -185,12 +235,16 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
             }
-            getPlaylistTracks(selectedPlaylistID);
-            playerApi.resume();
-
-            WorkRequest testWorkRequest = new OneTimeWorkRequest.Builder(MainWorker.class).build();
-            WorkManager.getInstance(MainActivity.context).enqueue(testWorkRequest);
+            beginProcess();
         }
+    }
+
+    private void beginProcess() {
+        getPlaylistTracks(selectedPlaylistID);
+        playerApi.resume();
+
+        WorkRequest testWorkRequest = new OneTimeWorkRequest.Builder(MainWorker.class).build();
+        WorkManager.getInstance(MainActivity.context).enqueue(testWorkRequest);
     }
 
     // INTERACTION WITH SPOTIFY WEB API

@@ -24,7 +24,6 @@ public class SpotifyBroadcastReceiver extends BroadcastReceiver {
             boolean playing = intent.getBooleanExtra("playing", false);
             int positionInMs = intent.getIntExtra("playbackPosition", 0);
 
-            Log.e("", "Playback change noticed");
             MainWorker.context.onPlaybackStateChange(playing, positionInMs);
         }
     }

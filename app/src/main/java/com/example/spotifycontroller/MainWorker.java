@@ -44,6 +44,7 @@ public class MainWorker extends Worker {
     Location lastKnownLocation;
 
     boolean queued = false;
+    public static boolean active = false;
 
     ArrayList<MainActivity.Track> playlist;
 
@@ -119,12 +120,18 @@ public class MainWorker extends Worker {
 
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(MainActivity.context);
 
+        active = true;
         return Result.success();
     }
 
     @Override
     public void onStopped() {
-        getApplicationContext().unregisterReceiver(broadcastReceiver);
+        active = false;
+        try {
+            getApplicationContext().unregisterReceiver(broadcastReceiver);
+        }
+        catch (IllegalArgumentException e) {}
+
         if (endOfTrackAction != null) {
             endOfTrackAction.interrupt();
         }
@@ -295,9 +302,6 @@ public class MainWorker extends Worker {
         if (getNextLocation !=  null) {
             getNextLocation.interrupt();
             Log.e(TAG, "Location updates halted");
-        }
-        else {
-            Log.e(TAG, "Tried to halt, but couldn't");
         }
     }
 
