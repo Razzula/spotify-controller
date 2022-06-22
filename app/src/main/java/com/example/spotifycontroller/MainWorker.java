@@ -158,8 +158,9 @@ public class MainWorker extends Worker {
             Log.e(TAG, "Invalid trackID");
         }
 
-        playerApi.resume();
         stopLocationUpdates();
+        playerApi.pause();
+        playerApi.resume();
     }
 
     public void onPlaybackStateChange(boolean playing, int playbackPos) {
@@ -311,15 +312,6 @@ public class MainWorker extends Worker {
             return;
         }
 
-        /*//TEMP
-        TextView textLocation = findViewById(R.id.location);
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                textLocation.setText("");
-            }
-        });*/
-
         try {
 
             fusedLocationProviderClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null).addOnCompleteListener(new OnCompleteListener<Location>() {
@@ -359,23 +351,17 @@ public class MainWorker extends Worker {
 
             Log.e(TAG, "GPS: "+currentVelocity+"m/s ("+(currentVelocity*2.23694)+"mph)");
 
-            /*//TEMP
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    float currentVelocity = velocities.get(velocities.size()-1);
-                    textSpeed.setText("time :"+timePassed+"s\nGPS: "+currentVelocity+"m/s ("+Math.round(currentVelocity*2.23694*100)/100+"mph)"+"\n\nenergy: "+(currentVelocity/31.2928));
-                }
-            });*/
+            MainActivity.context.setLocationText(
+                    "lat:"+newLocation.getLatitude()+"\nlong:"+newLocation.getLongitude(),
+                    "time :"+timePassed+"s\nGPS: "+currentVelocity+"m/s ("+Math.round(currentVelocity*2.23694*100)/100+"mph)"+"\n\nenergy: "+(currentVelocity/31.2928)
+            );
         }
-
-        /*//TEMP
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                textLocation.setText("lat:"+newLocation.getLatitude()+"\nlong:"+newLocation.getLongitude());
-            }
-        });*/
+        else {
+            MainActivity.context.setLocationText(
+                    "lat:"+newLocation.getLatitude()+"\nlong:"+newLocation.getLongitude(),
+                    "no data on velocity"
+            );
+        }
 
         lastKnownLocation = newLocation;
     }

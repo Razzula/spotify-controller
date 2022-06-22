@@ -9,12 +9,21 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import com.spotify.android.appremote.api.AppRemote;
 import com.spotify.android.appremote.api.ConnectionParams;
 import com.spotify.android.appremote.api.Connector;
 import com.spotify.android.appremote.api.SpotifyAppRemote;
+import com.spotify.android.appremote.internal.SpotifyLocator;
+import com.spotify.protocol.client.RequiredFeatures;
 import com.spotify.sdk.android.auth.AuthorizationClient;
 import com.spotify.sdk.android.auth.AuthorizationRequest;
 import com.spotify.sdk.android.auth.AuthorizationResponse;
+import com.spotify.sdk.android.auth.LoginActivity;
+import com.spotify.sdk.android.auth.app.SpotifyAuthHandler;
+import com.spotify.sdk.android.auth.app.SpotifyNativeAuthUtil;
 
 public class SplashActivity extends AppCompatActivity {
 
@@ -31,7 +40,14 @@ public class SplashActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_splash);
 
+        token = "BQDnIbSo5uZCVFo4IBgDXgWhGLtCJi1xLXt0E_6DBhaGJTxjx_2w3EF7E2rENa2hHnUkIczzSA6gJrkbvgVXnlrJ9sTM82ElAzV_8bCWXHFbXXSyYJ3E3_7s09wg-i381xTK7woAGrHjTAPx3Ed7ItQQrq6DmxfJ9r3eqPkQnuHbDVx9Y3WrOGFHsOQA2lJzbPQ09pr5bXmttPEWOOs554zkq0-yJ6e2";
+
         // SPOTIFY SDK
+        List<String> test = new ArrayList<>();
+        test.add(RequiredFeatures.FEATURES_V1);
+        test.add(RequiredFeatures.FEATURES_V2);
+        test.add(RequiredFeatures.FEATURES_V3);
+
         ConnectionParams connectionParams =
                 new ConnectionParams.Builder(CLIENT_ID)
                         .setRedirectUri(REDIRECT_URI)

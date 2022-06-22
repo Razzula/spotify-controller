@@ -18,6 +18,10 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
+import android.media.audiofx.DynamicsProcessing;
 import android.os.Build;
 import android.os.Bundle;
 
@@ -33,6 +37,11 @@ import com.google.android.gms.tasks.Task;
 // for Spotify SDK
 import com.spotify.android.appremote.api.SpotifyAppRemote;
 import com.spotify.android.appremote.api.PlayerApi;
+import com.spotify.protocol.client.CallResult;
+import com.spotify.protocol.client.Result;
+import com.spotify.protocol.types.Image;
+import com.spotify.protocol.types.ImageUri;
+import com.spotify.protocol.types.PlayerState;
 // for Spotify Web API
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -45,6 +54,7 @@ import android.location.Location;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.CompoundButton;
+import android.widget.ImageButton;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.os.SystemClock;
@@ -56,6 +66,8 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.lang.Thread;
+import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 public class MainActivity extends AppCompatActivity {
@@ -247,6 +259,20 @@ public class MainActivity extends AppCompatActivity {
         WorkManager.getInstance(MainActivity.context).enqueue(testWorkRequest);
     }
 
+    //TEMP
+    public void setLocationText(String location, String speed) {
+        TextView textLocation = findViewById(R.id.location);
+        TextView textSpeed = findViewById(R.id.data);
+
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                textLocation.setText(location);
+                textSpeed.setText(speed);
+            }
+        });
+    }
+
     // INTERACTION WITH SPOTIFY WEB API
 
     private static JSONObject GET(final String endpoint, final String id) {
@@ -325,7 +351,76 @@ public class MainActivity extends AppCompatActivity {
                 String description = playlist.getString("description");;
                 int numberOfTracks = Integer.parseInt(playlist.getJSONObject("tracks").getString("total"));
 
-                this.playlists.add(new Playlist(id, name, description, numberOfTracks));
+                Bitmap newImg = Bitmap.createBitmap(288, 288, Bitmap.Config.ARGB_8888);
+
+                String url = playlist.getJSONArray("images").getJSONObject(0).getString("url").split("/")[4];
+                //Log.d("", url);
+                if (url.length() > 40) {
+
+                    ArrayList<Bitmap> images = new ArrayList<>();
+                    ArrayList<ImageUri> uris = new ArrayList<>();
+
+                    for (int n=0; n<4; n+=1) {
+                        String tempurl = String.valueOf(Arrays.copyOfRange(url.toCharArray(), n * 40, (n + 1) * 40));
+                        uris.add(new ImageUri("spotify:image:" + tempurl));
+                    }
+
+                        mSpotifyAppRemote.getImagesApi().getImage(uris.get(0)).setResultCallback(
+                                bitmap -> {
+                                    images.add(Bitmap.createScaledBitmap(bitmap, 144, 144, false));
+
+                                    mSpotifyAppRemote.getImagesApi().getImage(uris.get(1)).setResultCallback(
+                                            bitmap2 -> {
+                                                images.add(Bitmap.createScaledBitmap(bitmap2, 144, 144, false));
+
+                                                mSpotifyAppRemote.getImagesApi().getImage(uris.get(2)).setResultCallback(
+                                                        bitmap3 -> {
+                                                            images.add(Bitmap.createScaledBitmap(bitmap3, 144, 144, false));
+
+                                                            mSpotifyAppRemote.getImagesApi().getImage(uris.get(3)).setResultCallback(
+                                                                    bitmap4 -> {
+                                                                        images.add(Bitmap.createScaledBitmap(bitmap4, 144, 144, false));
+
+                                                                        for (int x = 0; x < 144; x++) {
+                                                                            for (int y = 0; y < 144; y++) {
+                                                                                int pixelColour = images.get(0).getPixel(x, y);
+                                                                                newImg.setPixel(x, y, pixelColour);
+
+                                                                                pixelColour = images.get(1).getPixel(x, y);
+                                                                                newImg.setPixel(x+144, y, pixelColour);
+
+                                                                                pixelColour = images.get(2).getPixel(x, y);
+                                                                                newImg.setPixel(x, y+144, pixelColour);
+
+                                                                                pixelColour = images.get(3).getPixel(x, y);
+                                                                                newImg.setPixel(x+144, y+144, pixelColour);
+
+                                                                            }
+                                                                        }
+                                                                        this.playlists.add(new Playlist(id, name, description, numberOfTracks, newImg));
+                                                                        playlistsRecyclerViewAdapter.notifyItemInserted(0);
+
+                                                                    });
+                                                        });
+                                            });
+                                });
+                }
+                else {
+                    ImageUri imageUri = new ImageUri("spotify:image:"+url);
+
+                    mSpotifyAppRemote
+                            .getImagesApi()
+                            .getImage(imageUri, Image.Dimension.THUMBNAIL)
+                            .setResultCallback(
+                                    bitmap -> {
+                                        this.playlists.add(new Playlist(id, name, description, numberOfTracks, bitmap));
+                                    })
+                            .setErrorCallback(
+                                    error -> {
+                                        this.playlists.add(new Playlist(id, name, description, numberOfTracks));
+                                    });
+                }
+
             }
             playlistsRecyclerViewAdapter.notifyItemInserted(0);
 
@@ -433,5 +528,26 @@ public class MainActivity extends AppCompatActivity {
                 break;
             }
         }
+    }
+
+    // UI
+
+    public void togglePlaylistList (View view) {
+        RecyclerView recyclerView = findViewById(R.id.recyclerPlaylists);
+
+        ImageButton btn = (ImageButton) view;
+        if (recyclerView.getVisibility() == View.VISIBLE) {
+            recyclerView.setVisibility(View.GONE);
+            btn.setImageResource(android.R.drawable.arrow_down_float);
+        }
+        else {
+            recyclerView.setVisibility(View.VISIBLE);
+            btn.setImageResource(android.R.drawable.arrow_up_float);
+        }
+    }
+
+    public void goToSpotify(View view) {
+        Log.e(TAG, "link");
+
     }
 }

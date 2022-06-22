@@ -4,6 +4,7 @@ import android.content.Context;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.TextView;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -15,13 +16,14 @@ public class PlaylistsAdapter extends RecyclerView.Adapter<PlaylistsAdapter.View
         public TextView nameTextView;
         public TextView descriptionTextView;
         public TextView infoTextView;
+        public ImageView imageView;
 
         public ViewHolder(View itemView) {
             super(itemView);
             nameTextView = (TextView) itemView.findViewById(R.id.textName);
             descriptionTextView = (TextView) itemView.findViewById(R.id.textDescription);
             infoTextView = (TextView) itemView.findViewById(R.id.textInfo);
-
+            imageView = (ImageView) itemView.findViewById(R.id.imageView);
         }
     }
 
@@ -57,6 +59,11 @@ public class PlaylistsAdapter extends RecyclerView.Adapter<PlaylistsAdapter.View
 
         TextView infoTextView = holder.infoTextView;
         infoTextView.setText(playlist.getNumberOfTracks()+" tracks");
+
+        if (playlist.getImage() != null) {
+            ImageView imageView = holder.imageView;
+            imageView.setImageBitmap(playlist.getImage());
+        }
     }
 
     @Override
