@@ -1,6 +1,5 @@
 package com.example.spotifycontroller;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
@@ -12,52 +11,38 @@ import androidx.work.WorkManager;
 import androidx.work.WorkRequest;
 
 import android.Manifest;
-import android.app.IntentService;
-import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Color;
-import android.media.audiofx.DynamicsProcessing;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 
 // for Google Maps Location Services
-import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationCallback;
-import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.LocationResult;
-import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.location.Priority;
-import com.google.android.gms.tasks.OnCompleteListener;
-import com.google.android.gms.tasks.Task;
 // for Spotify SDK
 import com.spotify.android.appremote.api.SpotifyAppRemote;
 import com.spotify.android.appremote.api.PlayerApi;
-import com.spotify.protocol.client.CallResult;
-import com.spotify.protocol.client.Result;
 import com.spotify.protocol.types.Image;
 import com.spotify.protocol.types.ImageUri;
-import com.spotify.protocol.types.PlayerState;
 // for Spotify Web API
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.JSONArray;
 
-import android.os.Looper;
 import android.util.Log;
 import android.content.Intent;
-import android.location.Location;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
-import android.view.WindowManager;
 import android.widget.CompoundButton;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.Switch;
 import android.widget.TextView;
-import android.os.SystemClock;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -67,7 +52,6 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.lang.Thread;
 import java.util.Arrays;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 public class MainActivity extends AppCompatActivity {
@@ -86,6 +70,7 @@ public class MainActivity extends AppCompatActivity {
     //static int crossFadeDuration;
 
     boolean active = false;
+    boolean repeat = false;
 
     String CHANNEL_ID = "test";
 
@@ -164,6 +149,24 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
         }
+
+        View selectedPlaylistView = findViewById(R.id.selectedPlaylist);
+        TextView itemName = selectedPlaylistView.findViewById(R.id.textName);
+        TextView itemDesc = selectedPlaylistView.findViewById(R.id.textDescription);
+        TextView itemInfo = selectedPlaylistView.findViewById(R.id.textInfo);
+        ImageView itemImg = selectedPlaylistView.findViewById(R.id.imageView);
+
+        itemName.setText("No Playlist Selected");
+        itemDesc.setText("");
+        itemInfo.setText("");
+        itemImg.setVisibility(View.GONE);
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.menu_main, menu);
+        return true;
     }
 
     @Override
@@ -343,7 +346,7 @@ public class MainActivity extends AppCompatActivity {
 
         try {
             JSONArray playlists = GET("https://api.spotify.com/v1/me/playlists", "").getJSONArray("items"); // get user's playlist data
-            for (int i=0; i<playlists.length(); i++) { // for each track in playlist
+            for (int i=0; i<playlists.length(); i++) { // for each playlist in list
                 JSONObject playlist = playlists.getJSONObject(i);
 
                 String id = playlist.getString("id");
@@ -354,8 +357,8 @@ public class MainActivity extends AppCompatActivity {
                 Bitmap newImg = Bitmap.createBitmap(288, 288, Bitmap.Config.ARGB_8888);
 
                 String url = playlist.getJSONArray("images").getJSONObject(0).getString("url").split("/")[4];
-                //Log.d("", url);
-                if (url.length() > 40) {
+                //Log.e("", url);
+                if (url.length() > 40) { //mosaic
 
                     ArrayList<Bitmap> images = new ArrayList<>();
                     ArrayList<ImageUri> uris = new ArrayList<>();
@@ -405,7 +408,7 @@ public class MainActivity extends AppCompatActivity {
                                             });
                                 });
                 }
-                else {
+                else { //single image
                     ImageUri imageUri = new ImageUri("spotify:image:"+url);
 
                     mSpotifyAppRemote
@@ -423,6 +426,10 @@ public class MainActivity extends AppCompatActivity {
 
             }
             playlistsRecyclerViewAdapter.notifyItemInserted(0);
+
+            if (playlists.length() <= 0) {
+                findViewById(R.id.textNoPlaylists).setVisibility(View.VISIBLE);
+            }
 
         } catch (JSONException e) {
             Log.e(TAG, "Map does not exists in playlists JSONObject");
@@ -490,20 +497,54 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // UI
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // Handle item selection
+        switch (item.getItemId()) {
+            case R.id.menuSettings:
+                Intent newIntent = new Intent(MainActivity.this, SettingsActivity.class);
+                newIntent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
+                startActivity(newIntent);
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+        }
+    }
+
     View previouslySelectedPlaylist;
     public void playlistsSelected(View view) {
 
-        TextView textView = (TextView) view.findViewById(R.id.textName);
-        String selectedPlaylist = textView.getText().toString();
+        Object id = view.getTag();
+        if (id == null) {
+            return;
+        }
+        selectedPlaylistID = String.valueOf(id);
 
-        Switch toggle = (Switch) findViewById(R.id.switchEnable);
+        TextView textView = view.findViewById(R.id.textName);
+        View selectedPlaylistView = findViewById(R.id.selectedPlaylist);
+
+        Switch toggle = findViewById(R.id.switchEnable);
 
         if (toggle.isChecked()) {
             return;
         }
 
+        // current selection views
+        TextView itemName = selectedPlaylistView.findViewById(R.id.textName);
+        TextView itemDesc = selectedPlaylistView.findViewById(R.id.textDescription);
+        TextView itemInfo = selectedPlaylistView.findViewById(R.id.textInfo);
+        ImageView itemImg = selectedPlaylistView.findViewById(R.id.imageView);
+
         if (previouslySelectedPlaylist != null) {
             previouslySelectedPlaylist.setBackgroundColor(0x00000000); // deselect previous selection
+            selectedPlaylistView.setBackgroundColor(0x00000000);
+
+            itemName.setText("No Playlist Selected");
+            itemDesc.setText("");
+            itemInfo.setText("");
+            itemImg.setVisibility(View.GONE);
         }
         else {
             toggle.setEnabled(true);
@@ -518,36 +559,97 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         view.setBackgroundColor(0x8800AA00);
+        selectedPlaylistView.setBackgroundColor(0x8800AA00);
 
+        previouslySelectedPlaylist = view;
 
-        // get ID of playlist
+        //get playlist data
         for (int i=0; i<playlists.size(); i++) {
-            if (playlists.get(i).getName().equals(selectedPlaylist)) {
-                selectedPlaylistID = playlists.get(i).getID();
-                previouslySelectedPlaylist = view;
+            if (playlists.get(i).getID().equals(selectedPlaylistID)) {
+                Playlist selectedPlaylist = playlists.get(i);
+
+                itemName.setText(selectedPlaylist.getName());
+                itemDesc.setText(selectedPlaylist.getDescription());
+                itemInfo.setText(String.valueOf(selectedPlaylist.getNumberOfTracks())+" tracks");
+                if (selectedPlaylist.getImage() != null) {
+                    itemImg.setImageBitmap(selectedPlaylist.getImage());
+                }
+
+                itemImg.setVisibility(View.VISIBLE);
+                itemImg.setTag(selectedPlaylistID);
+
                 break;
+            }
+        }
+
+    }
+
+    public void togglePlaylistList (View view) {
+        RecyclerView recyclerView = findViewById(R.id.recyclerPlaylists);
+        View selectedPlaylistView = findViewById(R.id.selectedPlaylist);
+
+        ImageButton btn = (ImageButton) view;
+        if (recyclerView.getVisibility() == View.VISIBLE) { // show specific
+            recyclerView.setVisibility(View.GONE);
+            selectedPlaylistView.setVisibility(View.VISIBLE);
+            btn.setImageResource(android.R.drawable.arrow_down_float);
+
+            findViewById(R.id.textNoPlaylists).setVisibility(View.GONE);
+        }
+        else { // show all
+            recyclerView.setVisibility(View.VISIBLE);
+            selectedPlaylistView.setVisibility(View.GONE);
+            btn.setImageResource(android.R.drawable.arrow_up_float);
+
+            if (playlists.size() <= 0) {
+                findViewById(R.id.textNoPlaylists).setVisibility(View.VISIBLE);
             }
         }
     }
 
-    // UI
+    public void goToPlaylist(View view) {
 
-    public void togglePlaylistList (View view) {
-        RecyclerView recyclerView = findViewById(R.id.recyclerPlaylists);
+        String uri = String.valueOf(view.getTag());
 
-        ImageButton btn = (ImageButton) view;
-        if (recyclerView.getVisibility() == View.VISIBLE) {
-            recyclerView.setVisibility(View.GONE);
-            btn.setImageResource(android.R.drawable.arrow_down_float);
+        PackageManager pm = getPackageManager();
+        boolean isSpotifyInstalled;
+        try {
+            pm.getPackageInfo("com.spotify.music", 0);
+            isSpotifyInstalled = true;
+        } catch (PackageManager.NameNotFoundException e) {
+            isSpotifyInstalled = false;
+        }
+
+        if (isSpotifyInstalled) {
+            launchSpotify("playlist:"+uri);
         }
         else {
-            recyclerView.setVisibility(View.VISIBLE);
-            btn.setImageResource(android.R.drawable.arrow_up_float);
+            Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com/playlist/"+uri));
+            startActivity(browserIntent);
         }
+
+    }
+
+    public void toggleRepeat (View view) {
+        if (repeat) { // disable
+            view.setBackgroundColor(0x00000000);
+        }
+        else { // enable
+            view.setBackgroundColor(0x8800AA00);
+        }
+        repeat = !repeat;
     }
 
     public void goToSpotify(View view) {
-        Log.e(TAG, "link");
+        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com/collection/playlists"));
+        startActivity(browserIntent);
+    }
 
+    private void launchSpotify(String uri) {
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setData(Uri.parse("spotify:" + uri));
+        intent.putExtra(Intent.EXTRA_REFERRER,
+                Uri.parse("android-app://" + context.getPackageName()));
+        startActivity(intent);
     }
 }

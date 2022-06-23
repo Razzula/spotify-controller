@@ -2,4 +2,14 @@
     <string name="app_name">Spotify Controller</string>
     <string name="channel_name">CName</string>
     <string name="channel_description">CDesc</string>
+
+    <string name="dialogue_noSpotify_T">Spotify Required</string>
+    <string name="dialogue_noSpotify">This app requires Spotify to be installed in order to function.</string>
+
+    <string name="dialogue_appRemoteFail_T">Error</string>
+    <string name="dialogue_appRemoteFail">Could not establish connection with Spotify.</string>
+
+    <string name="dialouge_takeMe">Install</string>
+    <string name="dialouge_retry">Try Again</string>
+    <string name="dialogue_exit">Exit</string>
 </resources>

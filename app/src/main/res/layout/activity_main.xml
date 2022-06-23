@@ -35,7 +35,7 @@
         android:scrollbarSize="2dp"
         android:visibility="visible"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintHorizontal_bias="1.0"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/imageSpotify">
 
@@ -61,6 +61,7 @@
         android:layout_height="31dp"
         android:layout_marginStart="4dp"
         android:layout_marginTop="4dp"
+        android:onClick="goToSpotify"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:srcCompat="@drawable/spotify_logo" />
@@ -77,13 +78,57 @@
 
     <ImageButton
         android:id="@+id/imageButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="61dp"
+        android:layout_height="38dp"
         android:layout_marginEnd="4dp"
+        android:minWidth="48dp"
+        android:minHeight="48dp"
         android:onClick="togglePlaylistList"
         app:layout_constraintBottom_toTopOf="@+id/recyclerPlaylists"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:srcCompat="@android:drawable/arrow_up_float" />
+
+    <include
+        android:id="@+id/selectedPlaylist"
+        layout="@layout/item_playlist"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:layout_marginTop="4dp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/imageSpotify" />
+
+    <TextView
+        android:id="@+id/textNoPlaylists"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="20dp"
+        android:text="No playlists found..."
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@+id/recyclerPlaylists"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="@+id/recyclerPlaylists"
+        app:layout_constraintTop_toTopOf="@+id/recyclerPlaylists" />
+
+    <ImageButton
+        android:id="@+id/repeatButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:onClick="toggleRepeat"
+        app:layout_constraintEnd_toEndOf="@+id/imageButton"
+        app:layout_constraintTop_toBottomOf="@+id/playlistBottomBarrier"
+        app:srcCompat="@android:drawable/ic_popup_sync" />
+
+    <androidx.constraintlayout.widget.Barrier
+        android:id="@+id/playlistBottomBarrier"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:barrierDirection="bottom"
+        app:constraint_referenced_ids="recyclerPlaylists,selectedPlaylist"
+        tools:layout_editor_absoluteX="174dp"
+        tools:layout_editor_absoluteY="363dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

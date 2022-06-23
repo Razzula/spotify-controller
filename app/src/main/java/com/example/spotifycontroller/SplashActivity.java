@@ -4,8 +4,12 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
 import android.Manifest;
+import android.app.AlertDialog;
+import android.app.Dialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 
@@ -40,14 +44,93 @@ public class SplashActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_splash);
 
-        token = "BQDnIbSo5uZCVFo4IBgDXgWhGLtCJi1xLXt0E_6DBhaGJTxjx_2w3EF7E2rENa2hHnUkIczzSA6gJrkbvgVXnlrJ9sTM82ElAzV_8bCWXHFbXXSyYJ3E3_7s09wg-i381xTK7woAGrHjTAPx3Ed7ItQQrq6DmxfJ9r3eqPkQnuHbDVx9Y3WrOGFHsOQA2lJzbPQ09pr5bXmttPEWOOs554zkq0-yJ6e2";
+        Thread waitUntilAuthenticated = new Thread(){
+            public void run() {
 
-        // SPOTIFY SDK
-        List<String> test = new ArrayList<>();
-        test.add(RequiredFeatures.FEATURES_V1);
-        test.add(RequiredFeatures.FEATURES_V2);
-        test.add(RequiredFeatures.FEATURES_V3);
+                while (mSpotifyAppRemote == null || token == null) {}
 
+                try {
+                    sleep(1000);
+                }
+                catch (InterruptedException e) {
+
+                }
+
+                Log.e("Splash", "Launching main");
+                Intent newIntent = new Intent(SplashActivity.this, MainActivity.class);
+                newIntent.putExtra("token", token);
+                MainActivity.mSpotifyAppRemote = mSpotifyAppRemote;
+                startActivity(newIntent);
+                finishAffinity();
+
+            }
+        };
+        waitUntilAuthenticated.start();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+
+        PackageManager pm = getPackageManager();
+        boolean isSpotifyInstalled;
+        try {
+            pm.getPackageInfo("com.spotify.music", 0);
+            isSpotifyInstalled = true;
+        } catch (PackageManager.NameNotFoundException e) {
+            isSpotifyInstalled = false;
+        }
+
+        if (isSpotifyInstalled) {
+            connectToSpotifyApp();
+        }
+        else {
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setMessage(R.string.dialogue_noSpotify)
+                    .setTitle(R.string.dialogue_noSpotify_T)
+                    .setPositiveButton(R.string.dialouge_takeMe, new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int id) {
+                            getSpotify();
+                        }
+                    })
+                    .setNegativeButton(R.string.dialogue_exit, new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int id) {
+                            finish();
+                        }
+                    })
+                    .setCancelable(false);
+
+            AlertDialog dialog = builder.create();
+            dialog.show();
+        }
+    }
+
+    private void getSpotify() {
+
+        final String referrer = "adjust_campaign=PACKAGE_NAME&adjust_tracker=ndjczk&utm_source=adjust_preinstall";
+
+        try {
+            Uri uri = Uri.parse("market://details")
+                    .buildUpon()
+                    .appendQueryParameter("id", "com.spotify.music")
+                    .appendQueryParameter("referrer", referrer)
+                    .build();
+            startActivity(new Intent(Intent.ACTION_VIEW, uri));
+        } catch (android.content.ActivityNotFoundException ignored) {
+            Uri uri = Uri.parse("https://play.google.com/store/apps/details")
+                    .buildUpon()
+                    .appendQueryParameter("id", "com.spotify.music")
+                    .appendQueryParameter("referrer", referrer)
+                    .build();
+            startActivity(new Intent(Intent.ACTION_VIEW, uri));
+        }
+        finish();
+
+    }
+
+    // SPOTIFY SDK
+    private void connectToSpotifyApp() {
         ConnectionParams connectionParams =
                 new ConnectionParams.Builder(CLIENT_ID)
                         .setRedirectUri(REDIRECT_URI)
@@ -67,38 +150,32 @@ public class SplashActivity extends AppCompatActivity {
                         Log.e("MainActivity", throwable.getMessage(), throwable);
 
                         // Handle errors here
+                        AlertDialog.Builder builder = new AlertDialog.Builder(getApplicationContext());
+                        builder.setMessage(R.string.dialogue_appRemoteFail)
+                                .setTitle(R.string.dialogue_appRemoteFail_T)
+                                .setPositiveButton(R.string.dialouge_retry, new DialogInterface.OnClickListener() {
+                                    public void onClick(DialogInterface dialog, int id) {
+                                        connectToSpotifyApp();
+                                    }
+                                })
+                                .setNegativeButton(R.string.dialogue_exit, new DialogInterface.OnClickListener() {
+                                    public void onClick(DialogInterface dialog, int id) {
+                                        finish();
+                                    }
+                                })
+                                .setCancelable(false);
                     }
                 });
 
-        //SPOTIFY WEB API
+        connectToSpotifyAPI();
+    }
+
+    // SPOTIFY WEB API
+    private void connectToSpotifyAPI() {
         AuthorizationRequest.Builder builder = new AuthorizationRequest.Builder(CLIENT_ID, AuthorizationResponse.Type.TOKEN, REDIRECT_URI);
         builder.setScopes(new String[]{SCOPES});
         AuthorizationRequest request = builder.build();
         AuthorizationClient.openLoginActivity(this, REQUEST_CODE, request);
-
-        Thread waitUntilAuthenticated = new Thread(){
-            public void run() {
-
-                while (mSpotifyAppRemote == null || token == null) {
-
-                }
-                try {
-                    sleep(500);
-                }
-                catch (InterruptedException e) {
-
-                }
-
-                Log.e("Splash", "Launching main");
-                Intent newIntent = new Intent(SplashActivity.this, MainActivity.class);
-                newIntent.putExtra("token", token);
-                MainActivity.mSpotifyAppRemote = mSpotifyAppRemote;
-                startActivity(newIntent);
-                finish();
-
-            }
-        };
-        waitUntilAuthenticated.start();
     }
 
     @Override

@@ -159,8 +159,19 @@ public class MainWorker extends Worker {
         }
 
         stopLocationUpdates();
-        playerApi.pause();
-        playerApi.resume();
+        new Thread()
+        {
+            public void run() { // quickly pause then resume track, to ensure playback is caught after meta
+                playerApi.pause();
+                try {
+                    sleep(100);
+                }
+                catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                playerApi.resume();
+            }
+        }.start();
     }
 
     public void onPlaybackStateChange(boolean playing, int playbackPos) {
@@ -192,10 +203,11 @@ public class MainWorker extends Worker {
                 startLocationTracking.interrupt();
             }
 
-            if (currentTrackLength - playbackPos < 10000) {
+            /*if (currentTrackLength - playbackPos < 10000) {
                 return;
-            }
+            }*/
 
+            Log.e("", ""+timeToWait);
             if (timeToWait < 0) {
                 startLocationUpdates();
             }

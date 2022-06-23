@@ -17,6 +17,7 @@ public class PlaylistsAdapter extends RecyclerView.Adapter<PlaylistsAdapter.View
         public TextView descriptionTextView;
         public TextView infoTextView;
         public ImageView imageView;
+        public View self;
 
         public ViewHolder(View itemView) {
             super(itemView);
@@ -24,6 +25,7 @@ public class PlaylistsAdapter extends RecyclerView.Adapter<PlaylistsAdapter.View
             descriptionTextView = (TextView) itemView.findViewById(R.id.textDescription);
             infoTextView = (TextView) itemView.findViewById(R.id.textInfo);
             imageView = (ImageView) itemView.findViewById(R.id.imageView);
+            self = itemView;
         }
     }
 
@@ -50,6 +52,8 @@ public class PlaylistsAdapter extends RecyclerView.Adapter<PlaylistsAdapter.View
     public void onBindViewHolder(PlaylistsAdapter.ViewHolder holder, int position) {
         Playlist playlist = playlists.get(position);
 
+        holder.self.setTag(playlist.getID());
+
         // set view items to contain playlist data
         TextView nameTextView = holder.nameTextView;
         nameTextView.setText(playlist.getName());
@@ -63,6 +67,7 @@ public class PlaylistsAdapter extends RecyclerView.Adapter<PlaylistsAdapter.View
         if (playlist.getImage() != null) {
             ImageView imageView = holder.imageView;
             imageView.setImageBitmap(playlist.getImage());
+            imageView.setTag(playlist.getID());
         }
     }
 
