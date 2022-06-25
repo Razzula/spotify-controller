@@ -4,6 +4,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.preference.PreferenceManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.work.OneTimeWorkRequest;
@@ -14,15 +15,17 @@ import android.Manifest;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 
 // for Spotify SDK
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.spotify.android.appremote.api.SpotifyAppRemote;
 import com.spotify.android.appremote.api.PlayerApi;
 import com.spotify.protocol.types.Image;
@@ -47,7 +50,6 @@ import android.widget.TextView;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.lang.reflect.Type;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -71,8 +73,10 @@ public class MainActivity extends AppCompatActivity {
     //static boolean isCrossfadeEnabled = false;
     //static int crossFadeDuration;
 
-    boolean active = false;
-    boolean repeat = false;
+    private boolean active = false;
+    private boolean repeat = false;
+
+    private SharedPreferences prefs;
 
     String CHANNEL_ID = "test";
 
@@ -104,14 +108,26 @@ public class MainActivity extends AppCompatActivity {
 
         createNotificationChannel();
 
-            // setup playlistsRecyclerView
+        // setup playlistsRecyclerView
         playlists = new ArrayList<>();
         playlistsRecyclerViewAdapter = new PlaylistsAdapter(playlists);
         RecyclerView playlistsRecyclerView = findViewById(R.id.recyclerPlaylists);
         playlistsRecyclerView.setAdapter(playlistsRecyclerViewAdapter);
         playlistsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
 
+
+        prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
         getUserPlaylists();
+
+        // repeat button
+        repeat = prefs.getBoolean("repeatEnabled", false);
+        View view = findViewById(R.id.repeatButton);
+        if (repeat) {
+            view.setBackgroundColor(0x8800AA00);
+        }
+        else {
+            view.setBackgroundColor(0x00000000);
+        }
 
         // switch
         Switch toggle = findViewById(R.id.switchEnable);
@@ -123,6 +139,7 @@ public class MainActivity extends AppCompatActivity {
 
                     if (isChecked) {
 
+                        //TODO, sort permission requests, add explanation dialogs
                         if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                                 if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_DENIED) {
@@ -202,6 +219,8 @@ public class MainActivity extends AppCompatActivity {
         }
 
         super.onStop();
+
+        //TODO, prompt for background permissions here instead
     }
 
     @Override
@@ -263,10 +282,6 @@ public class MainActivity extends AppCompatActivity {
 
         WorkRequest testWorkRequest = new OneTimeWorkRequest.Builder(MainWorker.class).build();
         WorkManager.getInstance(MainActivity.context).enqueue(testWorkRequest);
-    }
-
-    public boolean getRepeatStatus() {
-        return repeat;
     }
 
     //TEMP
@@ -351,6 +366,22 @@ public class MainActivity extends AppCompatActivity {
 
     private void getUserPlaylists() {
 
+        // get user preference
+        String getImagesWhen = prefs.getString("getImagesWhen", "Always");
+        boolean shouldGetImages = false;
+        if (getImagesWhen.equals("Always")) {
+            shouldGetImages = true;
+        }
+        else if (getImagesWhen.equals("WiFi Only")) {
+
+            ConnectivityManager connManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            NetworkInfo deviceWiFI = connManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+
+            if (deviceWiFI.isConnected()) {
+                shouldGetImages = true;
+            }
+        }
+
         try {
             JSONArray playlists = GET("https://api.spotify.com/v1/me/playlists", "").getJSONArray("items"); // get user's playlist data
             for (int i=0; i<playlists.length(); i++) { // for each playlist in list
@@ -361,30 +392,31 @@ public class MainActivity extends AppCompatActivity {
                 String description = playlist.getString("description"); //TODO, properly decode
                 int numberOfTracks = Integer.parseInt(playlist.getJSONObject("tracks").getString("total"));
 
-                Bitmap newImg = Bitmap.createBitmap(288, 288, Bitmap.Config.ARGB_8888);
+                if (shouldGetImages) { // GET IMAGES //TODO, refactor into function
 
-                String url;
-                try {
-                    url = playlist.getJSONArray("images").getJSONObject(0).getString("url").split("/")[4];
-                }
-                catch (JSONException e) {
-                    Log.e(TAG, name+" does not have image");
+                    Bitmap newImg = Bitmap.createBitmap(288, 288, Bitmap.Config.ARGB_8888);
 
-                    this.playlists.add(new Playlist(id, name, description, numberOfTracks));
-                    playlistsRecyclerViewAdapter.notifyDataSetChanged();
-                    continue;
-                }
-                //Log.e("", url);
+                    String url;
+                    try {
+                        url = playlist.getJSONArray("images").getJSONObject(0).getString("url").split("/")[4];
+                    } catch (JSONException e) {
+                        Log.e(TAG, name + " does not have image");
 
-                if (url.length() > 40) { //mosaic
-
-                    ArrayList<Bitmap> images = new ArrayList<>();
-                    ArrayList<ImageUri> uris = new ArrayList<>();
-
-                    for (int n=0; n<4; n+=1) {
-                        String tempurl = String.valueOf(Arrays.copyOfRange(url.toCharArray(), n * 40, (n + 1) * 40));
-                        uris.add(new ImageUri("spotify:image:" + tempurl));
+                        this.playlists.add(new Playlist(id, name, description, numberOfTracks));
+                        playlistsRecyclerViewAdapter.notifyDataSetChanged();
+                        continue;
                     }
+                    //Log.e("", url);
+
+                    if (url.length() > 40) { //mosaic
+
+                        ArrayList<Bitmap> images = new ArrayList<>();
+                        ArrayList<ImageUri> uris = new ArrayList<>();
+
+                        for (int n = 0; n < 4; n += 1) {
+                            String tempurl = String.valueOf(Arrays.copyOfRange(url.toCharArray(), n * 40, (n + 1) * 40));
+                            uris.add(new ImageUri("spotify:image:" + tempurl));
+                        }
 
                         mSpotifyAppRemote.getImagesApi().getImage(uris.get(0)).setResultCallback(
                                 bitmap -> {
@@ -408,13 +440,13 @@ public class MainActivity extends AppCompatActivity {
                                                                                 newImg.setPixel(x, y, pixelColour);
 
                                                                                 pixelColour = images.get(1).getPixel(x, y);
-                                                                                newImg.setPixel(x+144, y, pixelColour);
+                                                                                newImg.setPixel(x + 144, y, pixelColour);
 
                                                                                 pixelColour = images.get(2).getPixel(x, y);
-                                                                                newImg.setPixel(x, y+144, pixelColour);
+                                                                                newImg.setPixel(x, y + 144, pixelColour);
 
                                                                                 pixelColour = images.get(3).getPixel(x, y);
-                                                                                newImg.setPixel(x+144, y+144, pixelColour);
+                                                                                newImg.setPixel(x + 144, y + 144, pixelColour);
 
                                                                             }
                                                                         }
@@ -425,23 +457,26 @@ public class MainActivity extends AppCompatActivity {
                                                         });
                                             });
                                 });
-                }
-                else { //single image
-                    ImageUri imageUri = new ImageUri("spotify:image:"+url);
+                    } else { //single image
+                        ImageUri imageUri = new ImageUri("spotify:image:" + url);
 
-                    mSpotifyAppRemote
-                            .getImagesApi()
-                            .getImage(imageUri, Image.Dimension.THUMBNAIL)
-                            .setResultCallback(
-                                    bitmap -> {
-                                        this.playlists.add(new Playlist(id, name, description, numberOfTracks, bitmap));
-                                        playlistsRecyclerViewAdapter.notifyDataSetChanged();
-                                    })
-                            .setErrorCallback(
-                                    error -> {
-                                        this.playlists.add(new Playlist(id, name, description, numberOfTracks));
-                                        playlistsRecyclerViewAdapter.notifyDataSetChanged();
-                                    });
+                        mSpotifyAppRemote
+                                .getImagesApi()
+                                .getImage(imageUri, Image.Dimension.THUMBNAIL)
+                                .setResultCallback(
+                                        bitmap -> {
+                                            this.playlists.add(new Playlist(id, name, description, numberOfTracks, bitmap));
+                                            playlistsRecyclerViewAdapter.notifyDataSetChanged();
+                                        })
+                                .setErrorCallback(
+                                        error -> {
+                                            this.playlists.add(new Playlist(id, name, description, numberOfTracks));
+                                            playlistsRecyclerViewAdapter.notifyDataSetChanged();
+                                        });
+                    }
+                }
+                else { // NO IMAGES
+                    this.playlists.add(new Playlist(id, name, description, numberOfTracks));
                 }
 
             }
@@ -522,7 +557,7 @@ public class MainActivity extends AppCompatActivity {
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handle item selection
         switch (item.getItemId()) {
-            case R.id.menuSettings:
+            case R.id.menuHome:
                 Intent newIntent = new Intent(MainActivity.this, SettingsActivity.class);
                 newIntent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
                 startActivity(newIntent);
@@ -664,13 +699,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void toggleRepeat (View view) {
-        if (repeat) { // disable
-            view.setBackgroundColor(0x00000000);
-        }
-        else { // enable
+        repeat = !repeat;
+        if (repeat) { // enable
             view.setBackgroundColor(0x8800AA00);
         }
-        repeat = !repeat;
+        else { // disable
+            view.setBackgroundColor(0x00000000);
+        }
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putBoolean("repeatEnabled", repeat);
+        editor.commit();
     }
 
     public void goToSpotify(View view) {

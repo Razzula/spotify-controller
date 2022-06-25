@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- TODO, use strings.xml values -->
+    <string-array name="ImageOptions">
+        <item>Always</item>
+        <item>WiFi Only</item>
+        <item>Never</item>
+    </string-array>
+
+    <string-array name="LocationOptions">
+        <item>Favour Location Accuracy</item>
+        <item>Balance Location Accuracy and Battery Life</item>
+        <item>Favour Battery Life</item>
+    </string-array>
+</resources>

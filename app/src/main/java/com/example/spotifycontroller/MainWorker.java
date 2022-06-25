@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.SystemClock;
@@ -12,6 +13,7 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
+import androidx.preference.PreferenceManager;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
@@ -25,6 +27,8 @@ import com.google.android.gms.tasks.Task;
 import com.spotify.android.appremote.api.PlayerApi;
 
 import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.Queue;
 
 public class MainWorker extends Worker {
 
@@ -48,11 +52,15 @@ public class MainWorker extends Worker {
     boolean queued = false;
     public static boolean active = false;
     private boolean repeatEnabled;
+    private boolean minorRepeatEnabled;
+    private int minorRepeatRate;
 
     private int fadeDuration = 0;
+    private int LocationPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY;
 
     ArrayList<MainActivity.Track> playlist;
     ArrayList<MainActivity.Track> fullPlaylist;
+    Queue<String> recentlyPlayed;
 
     public class actionAtEndOfTrack extends Thread {
         long timeToWait = 0;
@@ -118,7 +126,7 @@ public class MainWorker extends Worker {
 
         fullPlaylist = MainActivity.context.playlist;
         playlist = (ArrayList<MainActivity.Track>) fullPlaylist.clone();
-        repeatEnabled = MainActivity.context.getRepeatStatus();
+        recentlyPlayed = new LinkedList();
 
         // BROADCAST RECIEVER
         broadcastReceiver = new SpotifyBroadcastReceiver();
@@ -129,6 +137,36 @@ public class MainWorker extends Worker {
 
         getApplicationContext().registerReceiver(broadcastReceiver, filter);
         //TODO, ensure Spotify is setup to broadcast
+
+        // PREFERENCES LISTENER
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+        minorRepeatEnabled = prefs.getBoolean("allowMinorRepetition", false);
+        minorRepeatRate = prefs.getInt("repetitionTolerance", 0);
+        repeatEnabled = prefs.getBoolean("repeatEnabled", false);
+        updateLocationPriority(prefs);
+
+        SharedPreferences.OnSharedPreferenceChangeListener listener = new SharedPreferences.OnSharedPreferenceChangeListener() {
+            public void onSharedPreferenceChanged(SharedPreferences prefs, String key) {
+                if (key.equals("allowMinorRepetition")) {
+                    minorRepeatEnabled = prefs.getBoolean("allowMinorRepetition", false);
+                    minorRepeatRate = prefs.getInt("repetitionTolerance", 1);
+                }
+                else if (key.equals("repetitionTolerance")) {
+                    minorRepeatRate = prefs.getInt("repetitionTolerance", 1);
+                }
+                else if (key.equals("repeatEnabled")) {
+                    repeatEnabled = prefs.getBoolean("repeatEnabled", false);
+                }
+                else if (key.equals("locationAccuracy")) {
+                    updateLocationPriority(prefs);
+                }
+
+                if (repeatEnabled && minorRepeatEnabled) {
+                    playlist = (ArrayList<MainActivity.Track>) fullPlaylist.clone();
+                }
+            }
+        };
+        prefs.registerOnSharedPreferenceChangeListener(listener);
 
         // GPS
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(MainActivity.context);
@@ -143,6 +181,23 @@ public class MainWorker extends Worker {
 
         active = true;
         return Result.success();
+
+        //TODO, play playlist on start
+        //TODO, make sure receiver is receiving, if not, point to Spotify settings
+    }
+
+    private void updateLocationPriority(SharedPreferences prefs) {
+        String priority = prefs.getString("locationAccuracy", "Balance Location Accuracy and Battery Life");
+        if (priority.equals("Favour Location Accuracy")) {
+            LocationPriority = Priority.PRIORITY_HIGH_ACCURACY;
+        }
+        else if (priority.equals("Balance Location Accuracy and Battery Life")) {
+            LocationPriority = Priority.PRIORITY_BALANCED_POWER_ACCURACY;
+        }
+        else if (priority.equals("Favour Battery Life")) {
+            LocationPriority = Priority.PRIORITY_LOW_POWER;
+        }
+        Log.e("", "DEBUG: "+LocationPriority);
     }
 
     @Override
@@ -261,27 +316,36 @@ public class MainWorker extends Worker {
 
     private void queueNextTrack() {
 
-        if (playlist.size() == 0) {
+        if (playlist.size() == 0) { // PLAYLIST ENDED
             Log.d(TAG, "Playlist empty");
             onStopped();
         }
-        else if (playlist.size() == 1) {
+        else if (playlist.size() == 1) { // END OF PLAYLIST
+            String nextTrackID = playlist.get(0).id;
             if (repeatEnabled) {
-                playerApi.queue("spotify:track:" + playlist.get(0).id); //queue
+                playerApi.queue("spotify:track:" + nextTrackID); //queue
                 Log.d(TAG, "Playlist looped");
                 playlist = (ArrayList<MainActivity.Track>) fullPlaylist.clone();
             }
             else {
-                playerApi.play("spotify:track:" + playlist.get(0).id); //play //TODO, delay this to prevent abrupt ending of current song
+                playerApi.play("spotify:track:" + nextTrackID); //play //TODO, delay this to prevent abrupt ending of current song
                 playlist.remove(0);
+            }
+            // update data structures
+            recentlyPlayed.add(nextTrackID);
+            while (recentlyPlayed.size() > minorRepeatRate) {
+                recentlyPlayed.remove();
             }
         }
         else {
 
+            // calculate velocity
             float currentVelocity = 0;
             int i;
             for (i = 0; i < velocities.size(); i++) {
-                currentVelocity += velocities.get(i);
+                if (!velocities.get(i).isNaN()) {
+                    currentVelocity += velocities.get(i);
+                }
             }
             currentVelocity /= i; //TODO, use modal average not mean
             Log.e(TAG, "Average Speed: " + currentVelocity + "m/s");
@@ -292,19 +356,35 @@ public class MainWorker extends Worker {
             currentEnergy = rand.nextFloat();*/
             Log.e(TAG, "Energy: " + currentEnergy);
 
-
-            // find song based off of energy
-            //TODO, don't allow current track to be queued
+            // find song based off of energy //TODO, randomize to prevent always same order of tracks
             float minDelta = 1;
-            MainActivity.Track nextTrack = new MainActivity.Track("", "");
+            MainActivity.Track nextTrack = null;
             for (i = 0; i < playlist.size(); i++) {
                 float delta = Math.abs(currentEnergy - playlist.get(i).energy);
-                if (delta <= minDelta) {
-                    minDelta = delta;
-                    nextTrack = playlist.get(i);
+
+                if (delta <= minDelta) { // closer choice
+                    if (!recentlyPlayed.contains(playlist.get(i).id)) { // track is only valid if not recently played
+                        minDelta = delta;
+                        nextTrack = playlist.get(i);
+                    }
+
                 }
             }
-            playlist.remove(nextTrack);
+
+            if (nextTrack == null) { // catch
+                Log.e(TAG, "Could not find next track");
+                return;
+            }
+
+            // update data structures
+            recentlyPlayed.add(nextTrack.id);
+            while (recentlyPlayed.size() > minorRepeatRate) {
+                recentlyPlayed.remove();
+            }
+
+            if (!minorRepeatEnabled) { // only remove track if not repeating
+                playlist.remove(nextTrack);
+            }
 
             //queue
             playerApi.queue("spotify:track:" + nextTrack.id);
@@ -357,15 +437,22 @@ public class MainWorker extends Worker {
     private void getLocation() {
 
         if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_DENIED) {
+            Log.e(TAG, "Tried to getLocation without FINE_LOCATION permission");
+            return;
+        }
+        if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_DENIED) {
+            Log.e(TAG, "Tried to getLocation without BACKGROUND_LOCATION permission");
             return;
         }
 
+        //TODO, fix for background processing (always 0m/s)
+        CurrentLocationRequest currentLocationRequest = new CurrentLocationRequest.Builder()
+                .setPriority(LocationPriority)
+                .setMaxUpdateAgeMillis(1000)
+                .setGranularity(Granularity.GRANULARITY_PERMISSION_LEVEL)
+                .build();
+
         try {
-            CurrentLocationRequest currentLocationRequest = new CurrentLocationRequest.Builder()
-                    .setPriority(Priority.PRIORITY_BALANCED_POWER_ACCURACY)
-                    .setMaxUpdateAgeMillis(1000)
-                    .setGranularity(Granularity.GRANULARITY_PERMISSION_LEVEL)
-                    .build();
 
             fusedLocationProviderClient.getCurrentLocation(currentLocationRequest, null).addOnCompleteListener(new OnCompleteListener<Location>() {
                 @Override
@@ -383,6 +470,9 @@ public class MainWorker extends Worker {
         }
         catch (SecurityException e) {
             Log.e(TAG, "Security Exception");
+        }
+        catch (NullPointerException e) {
+            Log.e(TAG, "fusedLocationProviderClient is null");
         }
 
     }
