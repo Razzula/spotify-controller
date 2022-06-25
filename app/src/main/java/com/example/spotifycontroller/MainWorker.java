@@ -15,7 +15,9 @@ import androidx.core.app.ActivityCompat;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
+import com.google.android.gms.location.CurrentLocationRequest;
 import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.Granularity;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority;
 import com.google.android.gms.tasks.OnCompleteListener;
@@ -45,8 +47,12 @@ public class MainWorker extends Worker {
 
     boolean queued = false;
     public static boolean active = false;
+    private boolean repeatEnabled;
+
+    private int fadeDuration = 0;
 
     ArrayList<MainActivity.Track> playlist;
+    ArrayList<MainActivity.Track> fullPlaylist;
 
     public class actionAtEndOfTrack extends Thread {
         long timeToWait = 0;
@@ -110,6 +116,11 @@ public class MainWorker extends Worker {
     public Result doWork() {
         Log.e(TAG, "Worker started");
 
+        fullPlaylist = MainActivity.context.playlist;
+        playlist = (ArrayList<MainActivity.Track>) fullPlaylist.clone();
+        repeatEnabled = MainActivity.context.getRepeatStatus();
+
+        // BROADCAST RECIEVER
         broadcastReceiver = new SpotifyBroadcastReceiver();
 
         IntentFilter filter = new IntentFilter();
@@ -117,8 +128,18 @@ public class MainWorker extends Worker {
         filter.addAction("com.spotify.music.metadatachanged");
 
         getApplicationContext().registerReceiver(broadcastReceiver, filter);
+        //TODO, ensure Spotify is setup to broadcast
 
+        // GPS
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(MainActivity.context);
+
+        // SPOTIFY
+        playerApi
+                .getCrossfadeState()
+                .setResultCallback(
+                    crossfadeState -> {
+                        fadeDuration = crossfadeState.duration;
+                });
 
         active = true;
         return Result.success();
@@ -140,7 +161,10 @@ public class MainWorker extends Worker {
         }
         stopLocationUpdates();
         super.onStopped();
-        Log.e("", "Worker stopped");
+
+        MainActivity.context.setSwitch(false);
+
+        Log.e(TAG, "Worker stopped");
     }
 
     // INTERACTION WITH ANDROID SDK
@@ -181,7 +205,7 @@ public class MainWorker extends Worker {
             long timeToWait;
 
             // start thread to queue next track at end of current track
-            timeToWait = currentTrackLength - playbackPos - 10000; // time (in ms) until 10s from end of track
+            timeToWait = currentTrackLength - playbackPos - fadeDuration - 2000; // time (in ms) until 10s from end of track
             //Log.d(TAG, "" + timeToWait);
 
             if (endOfTrackAction != null) {
@@ -207,7 +231,6 @@ public class MainWorker extends Worker {
                 return;
             }*/
 
-            Log.e("", ""+timeToWait);
             if (timeToWait < 0) {
                 startLocationUpdates();
             }
@@ -238,25 +261,40 @@ public class MainWorker extends Worker {
 
     private void queueNextTrack() {
 
-        this.playlist = MainActivity.context.playlist;
-
-        float currentVelocity = 0;
-        int i;
-        for (i=0; i<velocities.size(); i++) {
-            currentVelocity += velocities.get(i);
+        if (playlist.size() == 0) {
+            Log.d(TAG, "Playlist empty");
+            onStopped();
         }
-        currentVelocity /= i;
-        Log.e(TAG, "Average Speed: "+currentVelocity+"m/s");
+        else if (playlist.size() == 1) {
+            if (repeatEnabled) {
+                playerApi.queue("spotify:track:" + playlist.get(0).id); //queue
+                Log.d(TAG, "Playlist looped");
+                playlist = (ArrayList<MainActivity.Track>) fullPlaylist.clone();
+            }
+            else {
+                playerApi.play("spotify:track:" + playlist.get(0).id); //play //TODO, delay this to prevent abrupt ending of current song
+                playlist.remove(0);
+            }
+        }
+        else {
 
-        float currentEnergy = currentVelocity / 31.2928f; //calculates energy as a % of car speed out of 70mph
+            float currentVelocity = 0;
+            int i;
+            for (i = 0; i < velocities.size(); i++) {
+                currentVelocity += velocities.get(i);
+            }
+            currentVelocity /= i; //TODO, use modal average not mean
+            Log.e(TAG, "Average Speed: " + currentVelocity + "m/s");
+
+            float currentEnergy = currentVelocity / 31.2928f; //calculates energy as a % of car speed out of 70mph
             /*//FOR DEBUG
             Random rand = new Random();
             currentEnergy = rand.nextFloat();*/
-        Log.e(TAG, "Energy: "+currentEnergy);
+            Log.e(TAG, "Energy: " + currentEnergy);
 
 
-        // find song based off of energy
-        if (playlist.size() > 0) {
+            // find song based off of energy
+            //TODO, don't allow current track to be queued
             float minDelta = 1;
             MainActivity.Track nextTrack = new MainActivity.Track("", "");
             for (i = 0; i < playlist.size(); i++) {
@@ -271,10 +309,6 @@ public class MainWorker extends Worker {
             //queue
             playerApi.queue("spotify:track:" + nextTrack.id);
             Log.e(TAG, "QUEUED " + nextTrack.name);
-
-        }
-        else {
-            Log.e(TAG, "Playlist empty");
         }
     }
 
@@ -309,6 +343,8 @@ public class MainWorker extends Worker {
 
         Log.e(TAG, "Location updates started");
 
+        //getLocation();
+
     }
 
     private void stopLocationUpdates() {
@@ -325,8 +361,13 @@ public class MainWorker extends Worker {
         }
 
         try {
+            CurrentLocationRequest currentLocationRequest = new CurrentLocationRequest.Builder()
+                    .setPriority(Priority.PRIORITY_BALANCED_POWER_ACCURACY)
+                    .setMaxUpdateAgeMillis(1000)
+                    .setGranularity(Granularity.GRANULARITY_PERMISSION_LEVEL)
+                    .build();
 
-            fusedLocationProviderClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null).addOnCompleteListener(new OnCompleteListener<Location>() {
+            fusedLocationProviderClient.getCurrentLocation(currentLocationRequest, null).addOnCompleteListener(new OnCompleteListener<Location>() {
                 @Override
                 public void onComplete(@NonNull Task<Location> task) {
 

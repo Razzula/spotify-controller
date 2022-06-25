@@ -87,7 +87,7 @@
         app:layout_constraintBottom_toTopOf="@+id/recyclerPlaylists"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:srcCompat="@android:drawable/arrow_up_float" />
+        app:srcCompat="@android:drawable/arrow_up_float" /> <!-- TODO -->
 
     <include
         android:id="@+id/selectedPlaylist"
@@ -120,7 +120,7 @@
         android:onClick="toggleRepeat"
         app:layout_constraintEnd_toEndOf="@+id/imageButton"
         app:layout_constraintTop_toBottomOf="@+id/playlistBottomBarrier"
-        app:srcCompat="@android:drawable/ic_popup_sync" />
+        app:srcCompat="@android:drawable/ic_popup_sync" /> <!-- TODO -->
 
     <androidx.constraintlayout.widget.Barrier
         android:id="@+id/playlistBottomBarrier"

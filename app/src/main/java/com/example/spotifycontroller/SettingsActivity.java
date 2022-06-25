@@ -24,3 +24,10 @@ public class SettingsActivity extends AppCompatActivity {
         overridePendingTransition(0, 0);
     }
 }
+
+//TODO
+// - Images:  Always, WiFi Only, Never
+// - Allow Minor Repetition ,, Set Tolerance
+// - Disable GPS Permissions
+// - Disconnect Spotify Account
+// - Location Accuracy

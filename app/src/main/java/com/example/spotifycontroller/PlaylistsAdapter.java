@@ -64,11 +64,12 @@ public class PlaylistsAdapter extends RecyclerView.Adapter<PlaylistsAdapter.View
         TextView infoTextView = holder.infoTextView;
         infoTextView.setText(playlist.getNumberOfTracks()+" tracks");
 
+
+        ImageView imageView = holder.imageView;
         if (playlist.getImage() != null) {
-            ImageView imageView = holder.imageView;
             imageView.setImageBitmap(playlist.getImage());
-            imageView.setTag(playlist.getID());
         }
+        imageView.setTag(playlist.getID());
     }
 
     @Override

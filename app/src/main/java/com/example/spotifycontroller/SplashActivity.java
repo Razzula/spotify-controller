@@ -194,7 +194,7 @@ public class SplashActivity extends AppCompatActivity {
 
                 // Auth flow returned an error
                 case ERROR:
-                    // Handle error response
+                    // TODO, Handle error response
                     break;
 
                 // Most likely auth flow was cancelled

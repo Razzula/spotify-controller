@@ -20,8 +20,9 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 
-// for Google Maps Location Services
 // for Spotify SDK
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.spotify.android.appremote.api.SpotifyAppRemote;
 import com.spotify.android.appremote.api.PlayerApi;
 import com.spotify.protocol.types.Image;
@@ -46,6 +47,7 @@ import android.widget.TextView;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.reflect.Type;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -130,6 +132,7 @@ public class MainActivity extends AppCompatActivity {
                                 }
                             }
 
+                            //TODO, connect to SDK here instead
                             beginProcess();
 
                         }
@@ -262,6 +265,10 @@ public class MainActivity extends AppCompatActivity {
         WorkManager.getInstance(MainActivity.context).enqueue(testWorkRequest);
     }
 
+    public boolean getRepeatStatus() {
+        return repeat;
+    }
+
     //TEMP
     public void setLocationText(String location, String speed) {
         TextView textLocation = findViewById(R.id.location);
@@ -351,13 +358,24 @@ public class MainActivity extends AppCompatActivity {
 
                 String id = playlist.getString("id");
                 String name = playlist.getString("name");
-                String description = playlist.getString("description");;
+                String description = playlist.getString("description"); //TODO, properly decode
                 int numberOfTracks = Integer.parseInt(playlist.getJSONObject("tracks").getString("total"));
 
                 Bitmap newImg = Bitmap.createBitmap(288, 288, Bitmap.Config.ARGB_8888);
 
-                String url = playlist.getJSONArray("images").getJSONObject(0).getString("url").split("/")[4];
+                String url;
+                try {
+                    url = playlist.getJSONArray("images").getJSONObject(0).getString("url").split("/")[4];
+                }
+                catch (JSONException e) {
+                    Log.e(TAG, name+" does not have image");
+
+                    this.playlists.add(new Playlist(id, name, description, numberOfTracks));
+                    playlistsRecyclerViewAdapter.notifyDataSetChanged();
+                    continue;
+                }
                 //Log.e("", url);
+
                 if (url.length() > 40) { //mosaic
 
                     ArrayList<Bitmap> images = new ArrayList<>();
@@ -401,7 +419,7 @@ public class MainActivity extends AppCompatActivity {
                                                                             }
                                                                         }
                                                                         this.playlists.add(new Playlist(id, name, description, numberOfTracks, newImg));
-                                                                        playlistsRecyclerViewAdapter.notifyItemInserted(0);
+                                                                        playlistsRecyclerViewAdapter.notifyDataSetChanged();
 
                                                                     });
                                                         });
@@ -417,15 +435,16 @@ public class MainActivity extends AppCompatActivity {
                             .setResultCallback(
                                     bitmap -> {
                                         this.playlists.add(new Playlist(id, name, description, numberOfTracks, bitmap));
+                                        playlistsRecyclerViewAdapter.notifyDataSetChanged();
                                     })
                             .setErrorCallback(
                                     error -> {
                                         this.playlists.add(new Playlist(id, name, description, numberOfTracks));
+                                        playlistsRecyclerViewAdapter.notifyDataSetChanged();
                                     });
                 }
 
             }
-            playlistsRecyclerViewAdapter.notifyItemInserted(0);
 
             if (playlists.length() <= 0) {
                 findViewById(R.id.textNoPlaylists).setVisibility(View.VISIBLE);
@@ -538,8 +557,8 @@ public class MainActivity extends AppCompatActivity {
         ImageView itemImg = selectedPlaylistView.findViewById(R.id.imageView);
 
         if (previouslySelectedPlaylist != null) {
-            previouslySelectedPlaylist.setBackgroundColor(0x00000000); // deselect previous selection
-            selectedPlaylistView.setBackgroundColor(0x00000000);
+            previouslySelectedPlaylist.findViewById(R.id.clickableMain).setBackgroundColor(0x00000000); // deselect previous selection
+            selectedPlaylistView.findViewById(R.id.clickableMain).setBackgroundColor(0x00000000);
 
             itemName.setText("No Playlist Selected");
             itemDesc.setText("");
@@ -558,21 +577,23 @@ public class MainActivity extends AppCompatActivity {
             toggle.setEnabled(false);
             return;
         }
-        view.setBackgroundColor(0x8800AA00);
-        selectedPlaylistView.setBackgroundColor(0x8800AA00);
 
         previouslySelectedPlaylist = view;
 
         //get playlist data
+        Playlist selectedPlaylist = playlists.get(0);
         for (int i=0; i<playlists.size(); i++) {
             if (playlists.get(i).getID().equals(selectedPlaylistID)) {
-                Playlist selectedPlaylist = playlists.get(i);
+                selectedPlaylist = playlists.get(i);
 
                 itemName.setText(selectedPlaylist.getName());
                 itemDesc.setText(selectedPlaylist.getDescription());
-                itemInfo.setText(String.valueOf(selectedPlaylist.getNumberOfTracks())+" tracks");
+                itemInfo.setText(selectedPlaylist.getNumberOfTracks()+" tracks");
                 if (selectedPlaylist.getImage() != null) {
                     itemImg.setImageBitmap(selectedPlaylist.getImage());
+                }
+                else {
+                    itemImg.setImageResource(R.drawable.spotify_icon);
                 }
 
                 itemImg.setVisibility(View.VISIBLE);
@@ -581,6 +602,18 @@ public class MainActivity extends AppCompatActivity {
                 break;
             }
         }
+
+        if (selectedPlaylist.getNumberOfTracks() <= 0) {
+            view.findViewById(R.id.clickableMain).setBackgroundColor(0x88AA0000);
+            selectedPlaylistView.findViewById(R.id.clickableMain).setBackgroundColor(0x88AA0000);
+            toggle.setEnabled(false);
+        }
+        else {
+            view.findViewById(R.id.clickableMain).setBackgroundColor(0x8800AA00);
+            selectedPlaylistView.findViewById(R.id.clickableMain).setBackgroundColor(0x8800AA00);
+            toggle.setEnabled(true);
+        }
+
 
     }
 
@@ -651,5 +684,18 @@ public class MainActivity extends AppCompatActivity {
         intent.putExtra(Intent.EXTRA_REFERRER,
                 Uri.parse("android-app://" + context.getPackageName()));
         startActivity(intent);
+    }
+
+    public void setSwitch(boolean state) {
+
+        Switch toggle = MainActivity.context.findViewById(R.id.switchEnable);
+
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                toggle.setChecked(state);
+            }
+        });
+
     }
 }
