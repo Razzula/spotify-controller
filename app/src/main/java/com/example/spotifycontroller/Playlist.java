@@ -3,11 +3,11 @@ package com.example.spotifycontroller;
 import android.graphics.Bitmap;
 
 public class Playlist {
-    private String id;
-    private String name;
-    private String description;
-    private int numberOfTracks;
-    private Bitmap image;
+    private final String id;
+    private final String name;
+    private final String description;
+    private final int numberOfTracks;
+    private final Bitmap image;
 
     public Playlist(String id, String name, String description, int numberOfTracks) {
         this.id = id;

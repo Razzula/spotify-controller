@@ -1,40 +1,27 @@
 package com.example.spotifycontroller;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
 
-import android.Manifest;
 import android.app.AlertDialog;
-import android.app.Dialog;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 
-import java.util.ArrayList;
-import java.util.List;
-
-import com.spotify.android.appremote.api.AppRemote;
 import com.spotify.android.appremote.api.ConnectionParams;
 import com.spotify.android.appremote.api.Connector;
 import com.spotify.android.appremote.api.SpotifyAppRemote;
-import com.spotify.android.appremote.internal.SpotifyLocator;
-import com.spotify.protocol.client.RequiredFeatures;
 import com.spotify.sdk.android.auth.AuthorizationClient;
 import com.spotify.sdk.android.auth.AuthorizationRequest;
 import com.spotify.sdk.android.auth.AuthorizationResponse;
-import com.spotify.sdk.android.auth.LoginActivity;
-import com.spotify.sdk.android.auth.app.SpotifyAuthHandler;
-import com.spotify.sdk.android.auth.app.SpotifyNativeAuthUtil;
 
 public class SplashActivity extends AppCompatActivity {
 
     private static final String CLIENT_ID = "c3ea15ea37eb4121a64ee8af3521f832";
     private static final String REDIRECT_URI = "com.example.spotifycontroller://callback";
     private static final int REQUEST_CODE = 1337;
-    private static final String SCOPES = "user-read-email,user-read-private,playlist-read-private";
+    private static final String SCOPES = "playlist-read-private";
 
     SpotifyAppRemote mSpotifyAppRemote;
     private static String token;
@@ -44,27 +31,23 @@ public class SplashActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_splash);
 
-        Thread waitUntilAuthenticated = new Thread(){
-            public void run() {
+        Thread waitUntilAuthenticated = new Thread(() -> {
 
-                while (mSpotifyAppRemote == null || token == null) {}
+            while (mSpotifyAppRemote == null || token == null) {}
 
-                try {
-                    sleep(1000);
-                }
-                catch (InterruptedException e) {
-
-                }
-
-                Log.e("Splash", "Launching main");
-                Intent newIntent = new Intent(SplashActivity.this, MainActivity.class);
-                newIntent.putExtra("token", token);
-                MainActivity.mSpotifyAppRemote = mSpotifyAppRemote;
-                startActivity(newIntent);
-                finishAffinity();
-
+            try {
+                Thread.sleep(1000);
             }
-        };
+            catch (InterruptedException ignored) {}
+
+            Log.e("Splash", "Launching main");
+            Intent newIntent = new Intent(SplashActivity.this, MainActivity.class);
+            newIntent.putExtra("token", token);
+            MainActivity.mSpotifyAppRemote = mSpotifyAppRemote;
+            startActivity(newIntent);
+            finishAffinity();
+
+        });
         waitUntilAuthenticated.start();
     }
 
@@ -89,16 +72,8 @@ public class SplashActivity extends AppCompatActivity {
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
             builder.setMessage(R.string.dialogue_noSpotify)
                     .setTitle(R.string.dialogue_noSpotify_T)
-                    .setPositiveButton(R.string.dialouge_takeMe, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int id) {
-                            getSpotify();
-                        }
-                    })
-                    .setNegativeButton(R.string.dialogue_exit, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int id) {
-                            finish();
-                        }
-                    })
+                    .setPositiveButton(R.string.dialouge_takeMe, (dialog, id) -> getSpotify())
+                    .setNegativeButton(R.string.dialogue_exit, (dialog, id) -> finish())
                     .setCancelable(false);
 
             AlertDialog dialog = builder.create();
@@ -147,22 +122,14 @@ public class SplashActivity extends AppCompatActivity {
 
                     @Override
                     public void onFailure(Throwable throwable) {
-                        Log.e("MainActivity", throwable.getMessage(), throwable);
+                        Log.e("SplashActivity", throwable.getMessage(), throwable);
 
                         // Handle errors here
                         AlertDialog.Builder builder = new AlertDialog.Builder(getApplicationContext());
                         builder.setMessage(R.string.dialogue_appRemoteFail)
                                 .setTitle(R.string.dialogue_appRemoteFail_T)
-                                .setPositiveButton(R.string.dialouge_retry, new DialogInterface.OnClickListener() {
-                                    public void onClick(DialogInterface dialog, int id) {
-                                        connectToSpotifyApp();
-                                    }
-                                })
-                                .setNegativeButton(R.string.dialogue_exit, new DialogInterface.OnClickListener() {
-                                    public void onClick(DialogInterface dialog, int id) {
-                                        finish();
-                                    }
-                                })
+                                .setPositiveButton(R.string.dialouge_retry, (dialog, id) -> connectToSpotifyApp())
+                                .setNegativeButton(R.string.dialogue_exit, (dialog, id) -> finish())
                                 .setCancelable(false);
                     }
                 });

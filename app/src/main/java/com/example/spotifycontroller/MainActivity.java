@@ -1,5 +1,6 @@
 package com.example.spotifycontroller;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.preference.PreferenceManager;
@@ -7,6 +8,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import android.Manifest;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -14,7 +16,6 @@ import android.graphics.Bitmap;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 
 // for Spotify SDK
@@ -60,7 +61,6 @@ public class MainActivity extends AppCompatActivity {
 
     static PlayerApi playerApi;
 
-    private boolean active = false;
     private boolean repeat = false;
 
     private SharedPreferences prefs;
@@ -116,40 +116,38 @@ public class MainActivity extends AppCompatActivity {
         // switch
         Switch toggle = findViewById(R.id.switchEnable);
         if (toggle != null) {
-            toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+            toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
 
-                    active = isChecked;
+                if (isChecked) {
 
-                    if (isChecked) {
+                    if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                        beginProcess();
+                    }
+                    else {
+                        if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION)) {
+                            AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.context);
+                            builder.setMessage(R.string.dialogue_permissions)
+                                    .setTitle(R.string.dialogue_permissions_T)
+                                    .setPositiveButton("Okay", (dialog, id) -> ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44))
+                                    .setNegativeButton("Cancel", (dialog, id) -> setSwitch(false))
+                                    .setOnCancelListener(dialog -> setSwitch(false));
 
-                        //TODO, sort permission requests, add explanation dialogs
-                        if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_DENIED) {
-
-                                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 45);
-                                    return;
-                                }
-                            }
-
-                            //TODO, connect to SDK here instead
-                            beginProcess();
-
+                            AlertDialog dialog = builder.create();
+                            dialog.show();
                         }
                         else {
                             ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44);
                         }
                     }
-
-                    else {
-                        if (mainIntent != null) {
-                            getApplicationContext().stopService(mainIntent);
-                            mainIntent = null;
-                        }
-                    }
-
                 }
+
+                else {
+                    if (mainIntent != null) {
+                        getApplicationContext().stopService(mainIntent);
+                        mainIntent = null;
+                    }
+                }
+
             });
         }
 
@@ -177,15 +175,23 @@ public class MainActivity extends AppCompatActivity {
         Switch toggle = (Switch) findViewById(R.id.switchEnable);
         toggle.setChecked(MainService.active);
 
+        if (mainIntent != null) {
+            mainIntent.setAction("TO_BACK");
+            context.startForegroundService(mainIntent);
+        }
+
         super.onStart();
     }
 
     @Override
     protected void onStop() {
 
-        super.onStop();
+        if (mainIntent != null) {
+            mainIntent.setAction("TO_FORE");
+            context.startForegroundService(mainIntent);
+        }
 
-        //TODO, prompt for background permissions here instead
+        super.onStop();
     }
 
     @Override
@@ -199,27 +205,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-        if (requestCode == 45) {
-            Switch toggle = findViewById(R.id.switchEnable);
-
+        if (requestCode == 44) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 beginProcess();
-            }  else {
-                toggle.setChecked(false);
             }
-        }
-        else if (requestCode == 44) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_DENIED) {
-
-                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 45);
-                    return;
-                }
+            else {
+                setSwitch(false);
             }
-            beginProcess();
         }
     }
 
@@ -230,7 +225,7 @@ public class MainActivity extends AppCompatActivity {
         Context context = getApplicationContext();
         mainIntent = new Intent(context, MainService.class);
         mainIntent.setAction("START");
-        context.startForegroundService(mainIntent);
+        context.startService(mainIntent);
     }
 
     //TEMP
@@ -238,12 +233,9 @@ public class MainActivity extends AppCompatActivity {
         TextView textLocation = findViewById(R.id.location);
         TextView textSpeed = findViewById(R.id.data);
 
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                textLocation.setText(location);
-                textSpeed.setText(speed);
-            }
+        runOnUiThread(() -> {
+            textLocation.setText(location);
+            textSpeed.setText(speed);
         });
     }
 
@@ -266,14 +258,11 @@ public class MainActivity extends AppCompatActivity {
 
                     if (conn.getResponseCode() != 200) { //400 bad request, 401 unauthorised, 429 too many requests
 
-                        switch (conn.getResponseCode()) {
-                            case 400:
-                                Log.e(TAG, "HTTP Error 400: Bad Request ("+endpoint+id+")");
-                                break;
-
-                            default:
-                                Log.e(TAG, endpoint+id);
-                                throw new RuntimeException("Failed : HTTP error code : " + conn.getResponseCode());
+                        if (conn.getResponseCode() == 400) {
+                            Log.e(TAG, "HTTP Error 400: Bad Request (" + endpoint + id + ")");
+                        } else {
+                            Log.e(TAG, endpoint + id);
+                            throw new RuntimeException("Failed : HTTP error code : " + conn.getResponseCode());
                         }
                     }
 
@@ -352,7 +341,7 @@ public class MainActivity extends AppCompatActivity {
                         Log.e(TAG, name + " does not have image");
 
                         this.playlists.add(new Playlist(id, name, description, numberOfTracks));
-                        playlistsRecyclerViewAdapter.notifyDataSetChanged();
+                        checkIfPlaylistsLoaded(playlists.length());
                         continue;
                     }
                     //Log.e("", url);
@@ -400,7 +389,7 @@ public class MainActivity extends AppCompatActivity {
                                                                             }
                                                                         }
                                                                         this.playlists.add(new Playlist(id, name, description, numberOfTracks, newImg));
-                                                                        playlistsRecyclerViewAdapter.notifyDataSetChanged();
+                                                                        checkIfPlaylistsLoaded(playlists.length());
 
                                                                     });
                                                         });
@@ -415,12 +404,12 @@ public class MainActivity extends AppCompatActivity {
                                 .setResultCallback(
                                         bitmap -> {
                                             this.playlists.add(new Playlist(id, name, description, numberOfTracks, bitmap));
-                                            playlistsRecyclerViewAdapter.notifyDataSetChanged();
+                                            checkIfPlaylistsLoaded(playlists.length());
                                         })
                                 .setErrorCallback(
                                         error -> {
                                             this.playlists.add(new Playlist(id, name, description, numberOfTracks));
-                                            playlistsRecyclerViewAdapter.notifyDataSetChanged();
+                                            checkIfPlaylistsLoaded(playlists.length());
                                         });
                     }
                 }
@@ -438,6 +427,15 @@ public class MainActivity extends AppCompatActivity {
             Log.e(TAG, "Map does not exists in playlists JSONObject");
         }
 
+    }
+
+    private void checkIfPlaylistsLoaded(int targetSize) {
+
+        if (this.playlists.size() == targetSize) {
+            SpotifyAppRemote.disconnect(mSpotifyAppRemote);
+            findViewById(R.id.loadingPlaylists).setVisibility(View.GONE);
+        }
+        playlistsRecyclerViewAdapter.notifyItemInserted(playlists.size()-1);
     }
 
     private void getPlaylistTracks(String id) {
@@ -505,15 +503,13 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handle item selection
-        switch (item.getItemId()) {
-            case R.id.menuHome:
-                Intent newIntent = new Intent(MainActivity.this, SettingsActivity.class);
-                newIntent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
-                startActivity(newIntent);
-                return true;
-            default:
-                return super.onOptionsItemSelected(item);
+        if (item.getItemId() == R.id.menuHome) {
+            Intent newIntent = new Intent(MainActivity.this, SettingsActivity.class);
+            newIntent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            startActivity(newIntent);
+            return true;
         }
+        return super.onOptionsItemSelected(item);
     }
 
     View previouslySelectedPlaylist;
@@ -525,7 +521,6 @@ public class MainActivity extends AppCompatActivity {
         }
         selectedPlaylistID = String.valueOf(id);
 
-        TextView textView = view.findViewById(R.id.textName);
         View selectedPlaylistView = findViewById(R.id.selectedPlaylist);
 
         Switch toggle = findViewById(R.id.switchEnable);
@@ -604,12 +599,14 @@ public class MainActivity extends AppCompatActivity {
     public void togglePlaylistList (View view) {
         RecyclerView recyclerView = findViewById(R.id.recyclerPlaylists);
         View selectedPlaylistView = findViewById(R.id.selectedPlaylist);
+        TextView textView = findViewById(R.id.textTitle);
 
         ImageButton btn = (ImageButton) view;
         if (recyclerView.getVisibility() == View.VISIBLE) { // show specific
             recyclerView.setVisibility(View.GONE);
             selectedPlaylistView.setVisibility(View.VISIBLE);
             btn.setImageResource(android.R.drawable.arrow_down_float);
+            textView.setText("Playlist");
 
             findViewById(R.id.textNoPlaylists).setVisibility(View.GONE);
         }
@@ -617,6 +614,7 @@ public class MainActivity extends AppCompatActivity {
             recyclerView.setVisibility(View.VISIBLE);
             selectedPlaylistView.setVisibility(View.GONE);
             btn.setImageResource(android.R.drawable.arrow_up_float);
+            textView.setText("Playlists");
 
             if (playlists.size() <= 0) {
                 findViewById(R.id.textNoPlaylists).setVisibility(View.VISIBLE);
@@ -658,7 +656,7 @@ public class MainActivity extends AppCompatActivity {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
         SharedPreferences.Editor editor = prefs.edit();
         editor.putBoolean("repeatEnabled", repeat);
-        editor.commit();
+        editor.apply();
     }
 
     public void goToSpotify(View view) {
@@ -678,12 +676,7 @@ public class MainActivity extends AppCompatActivity {
 
         Switch toggle = MainActivity.context.findViewById(R.id.switchEnable);
 
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                toggle.setChecked(state);
-            }
-        });
+        runOnUiThread(() -> toggle.setChecked(state));
 
     }
 }

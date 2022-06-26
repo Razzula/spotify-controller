@@ -131,4 +131,13 @@
         tools:layout_editor_absoluteX="174dp"
         tools:layout_editor_absoluteY="363dp" />
 
+    <ProgressBar
+        android:id="@+id/loadingPlaylists"
+        style="?android:attr/progressBarStyle"
+        android:layout_width="33dp"
+        android:layout_height="32dp"
+        app:layout_constraintBottom_toBottomOf="@+id/imageButton"
+        app:layout_constraintEnd_toStartOf="@+id/imageButton"
+        app:layout_constraintTop_toTopOf="@+id/imageButton" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

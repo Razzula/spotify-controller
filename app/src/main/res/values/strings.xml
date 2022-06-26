@@ -9,6 +9,9 @@
     <string name="dialogue_appRemoteFail_T">Error</string>
     <string name="dialogue_appRemoteFail">Could not establish connection with Spotify.</string>
 
+    <string name="dialogue_permissions_T">Permissions Required</string>
+    <string name="dialogue_permissions">This app requires location permissions to calculate your speed, in order to select which tracks to play.</string>
+
     <string name="dialouge_takeMe">Install</string>
     <string name="dialouge_retry">Try Again</string>
     <string name="dialogue_exit">Exit</string>

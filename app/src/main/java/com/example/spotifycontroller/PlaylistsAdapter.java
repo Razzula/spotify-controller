@@ -6,13 +6,15 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
+
+import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.List;
 
 public class PlaylistsAdapter extends RecyclerView.Adapter<PlaylistsAdapter.ViewHolder> {
 
-    public class ViewHolder extends RecyclerView.ViewHolder {
+    public static class ViewHolder extends RecyclerView.ViewHolder {
         public TextView nameTextView;
         public TextView descriptionTextView;
         public TextView infoTextView;
@@ -29,12 +31,13 @@ public class PlaylistsAdapter extends RecyclerView.Adapter<PlaylistsAdapter.View
         }
     }
 
-    private List<Playlist> playlists;
+    private final List<Playlist> playlists;
 
     public PlaylistsAdapter(List<Playlist> playlists) {
         this.playlists = playlists;
     }
 
+    @NonNull
     @Override
     public PlaylistsAdapter.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
         Context context = parent.getContext();
@@ -44,8 +47,7 @@ public class PlaylistsAdapter extends RecyclerView.Adapter<PlaylistsAdapter.View
         View playlistView = inflater.inflate(R.layout.item_playlist, parent, false);
 
         // Return a new holder instance
-        ViewHolder viewHolder = new ViewHolder(playlistView);
-        return viewHolder;
+        return new ViewHolder(playlistView);
     }
 
     @Override

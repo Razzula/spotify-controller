@@ -3,7 +3,6 @@ package com.example.spotifycontroller;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.util.Log;
 
 public class SpotifyBroadcastReceiver extends BroadcastReceiver {
 
@@ -13,8 +12,8 @@ public class SpotifyBroadcastReceiver extends BroadcastReceiver {
         String action = intent.getAction();
         if (action.equals("com.spotify.music.metadatachanged")) {
             String trackId = intent.getStringExtra("id");
-            String artistName = intent.getStringExtra("artist");
-            String albumName = intent.getStringExtra("album");
+            //String artistName = intent.getStringExtra("artist");
+            //String albumName = intent.getStringExtra("album");
             String trackName = intent.getStringExtra("track");
             int trackLengthInSec = intent.getIntExtra("length", 0);
 
