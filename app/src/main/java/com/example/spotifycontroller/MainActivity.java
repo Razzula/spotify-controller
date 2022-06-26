@@ -2,19 +2,11 @@ package com.example.spotifycontroller;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
-import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
 import androidx.preference.PreferenceManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import androidx.work.OneTimeWorkRequest;
-import androidx.work.WorkManager;
-import androidx.work.WorkRequest;
 
 import android.Manifest;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -66,19 +58,13 @@ public class MainActivity extends AppCompatActivity {
     public static SpotifyAppRemote mSpotifyAppRemote;
     public static String token;
 
-    NotificationManager notificationManager;
-
     static PlayerApi playerApi;
-
-    //static boolean isCrossfadeEnabled = false;
-    //static int crossFadeDuration;
 
     private boolean active = false;
     private boolean repeat = false;
 
     private SharedPreferences prefs;
-
-    String CHANNEL_ID = "test";
+    public Intent mainIntent;
 
     ArrayList<Playlist> playlists;
     PlaylistsAdapter playlistsRecyclerViewAdapter;
@@ -105,8 +91,6 @@ public class MainActivity extends AppCompatActivity {
 
         playerApi = mSpotifyAppRemote.getPlayerApi();
         token = getIntent().getStringExtra("token");
-
-        createNotificationChannel();
 
         // setup playlistsRecyclerView
         playlists = new ArrayList<>();
@@ -159,11 +143,10 @@ public class MainActivity extends AppCompatActivity {
                     }
 
                     else {
-                        WorkManager.getInstance(getApplicationContext()).cancelAllWork();
-                        if (MainWorker.context != null) {
-                            MainWorker.context.onStopped();
+                        if (mainIntent != null) {
+                            getApplicationContext().stopService(mainIntent);
+                            mainIntent = null;
                         }
-                        notificationManager.cancel(0);
                     }
 
                 }
@@ -192,31 +175,13 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         Switch toggle = (Switch) findViewById(R.id.switchEnable);
-        toggle.setChecked(MainWorker.active);
-        notificationManager.cancel(0);
+        toggle.setChecked(MainService.active);
 
         super.onStart();
     }
 
     @Override
     protected void onStop() {
-
-        if (MainWorker.active) {
-            Intent intent = new Intent(getApplicationContext(), StopperService.class);
-            PendingIntent pendingIntent = PendingIntent.getService(getApplicationContext(), 0, intent, PendingIntent.FLAG_IMMUTABLE);
-
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(getApplicationContext(), CHANNEL_ID)
-                    .setSmallIcon(R.drawable.logo)
-                    .setContentTitle("Controller is running")
-                    .setContentText("Tap to stop.")
-                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                    .setOngoing(true)
-                    .setAutoCancel(true)
-                    .setContentIntent(pendingIntent);
-            NotificationManagerCompat notificationManager = NotificationManagerCompat.from(getApplicationContext());
-
-            notificationManager.notify(0, builder.build());
-        }
 
         super.onStop();
 
@@ -225,26 +190,12 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        WorkManager.getInstance(MainActivity.context).cancelAllWork();
-        if (MainWorker.context != null) {
-            MainWorker.context.onStopped();
+        if (mainIntent != null) {
+            getApplicationContext().stopService(mainIntent);
+            mainIntent = null;
         }
-        notificationManager.cancel(0);
         Log.e("", "Destroyed");
         super.onDestroy();
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = getString(R.string.channel_name);
-            String description = getString(R.string.channel_description);
-            int importance = NotificationManager.IMPORTANCE_DEFAULT;
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
-            channel.setDescription(description);
-
-            notificationManager = getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
-        }
     }
 
     @Override
@@ -255,11 +206,7 @@ public class MainActivity extends AppCompatActivity {
             Switch toggle = findViewById(R.id.switchEnable);
 
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                getPlaylistTracks(selectedPlaylistID);
-                playerApi.resume();
-
-                WorkRequest testWorkRequest = new OneTimeWorkRequest.Builder(MainWorker.class).build();
-                WorkManager.getInstance(MainActivity.context).enqueue(testWorkRequest);
+                beginProcess();
             }  else {
                 toggle.setChecked(false);
             }
@@ -280,8 +227,10 @@ public class MainActivity extends AppCompatActivity {
         getPlaylistTracks(selectedPlaylistID);
         playerApi.resume();
 
-        WorkRequest testWorkRequest = new OneTimeWorkRequest.Builder(MainWorker.class).build();
-        WorkManager.getInstance(MainActivity.context).enqueue(testWorkRequest);
+        Context context = getApplicationContext();
+        mainIntent = new Intent(context, MainService.class);
+        mainIntent.setAction("START");
+        context.startForegroundService(mainIntent);
     }
 
     //TEMP

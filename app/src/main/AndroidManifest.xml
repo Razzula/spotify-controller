@@ -14,6 +14,7 @@
         tools:remove="android:maxSdkVersion" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
 
     <application
         android:allowBackup="true"
@@ -43,8 +44,9 @@
             android:exported="false" />
 
         <service
-            android:name=".StopperService"
-            android:enabled="true" />
+            android:name=".MainService"
+            android:enabled="true"
+            android:foregroundServiceType="location" />
     </application>
 
 </manifest>

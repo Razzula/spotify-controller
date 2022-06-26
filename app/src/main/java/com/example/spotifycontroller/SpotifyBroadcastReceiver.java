@@ -18,13 +18,13 @@ public class SpotifyBroadcastReceiver extends BroadcastReceiver {
             String trackName = intent.getStringExtra("track");
             int trackLengthInSec = intent.getIntExtra("length", 0);
 
-            MainWorker.context.onMetadataChange(trackId, trackLengthInSec, trackName);
+            MainService.context.onMetadataChange(trackId, trackLengthInSec, trackName);
         }
         else if (action.equals("com.spotify.music.playbackstatechanged")) {
             boolean playing = intent.getBooleanExtra("playing", false);
             int positionInMs = intent.getIntExtra("playbackPosition", 0);
 
-            MainWorker.context.onPlaybackStateChange(playing, positionInMs);
+            MainService.context.onPlaybackStateChange(playing, positionInMs);
         }
     }
 

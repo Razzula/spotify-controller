@@ -1,21 +1,23 @@
 package com.example.spotifycontroller;
 
 import android.Manifest;
+import android.app.Notification;
+import android.app.PendingIntent;
+import android.app.Service;
 import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Location;
+import android.os.IBinder;
 import android.os.SystemClock;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
 import androidx.preference.PreferenceManager;
-import androidx.work.Worker;
-import androidx.work.WorkerParameters;
 
 import com.google.android.gms.location.CurrentLocationRequest;
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -30,18 +32,16 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.Queue;
 
-public class MainWorker extends Worker {
+public class MainService extends Service {
 
-    private static String TAG = "MainWorker";
-    public static MainWorker context;
+    private static String TAG = "MainService";
+    public static MainService context;
 
     PlayerApi playerApi;
     private BroadcastReceiver broadcastReceiver;
 
     int currentTrackLength = 0;
     ArrayList<Float> velocities;
-
-    Intent broadcastReceiverService;
 
     actionAtEndOfTrack endOfTrackAction;
     actionTowardsEndOfTrack startLocationTracking;
@@ -113,16 +113,44 @@ public class MainWorker extends Worker {
         }
     }
 
-    public MainWorker(@NonNull Context context, @NonNull WorkerParameters params) {
-        super(context, params);
-        this.context = this;
-
-        playerApi = MainActivity.playerApi;
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
     }
 
     @Override
-    public Result doWork() {
-        Log.e(TAG, "Worker started");
+    public void onCreate() {
+        Log.e(TAG, "Service created");
+
+        this.context = this;
+        playerApi = MainActivity.playerApi; //TODO, use sharedPreferences, not static variables
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startID) {
+        if (intent.getAction().equals("HALT")) { // STOP SERVICE
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        Log.e(TAG, "Service started");
+
+        // NOTIFICATION
+        Intent stopSelf = new Intent(this, MainService.class);
+        stopSelf.setAction("HALT");
+        PendingIntent pendingIntent = PendingIntent.getService(this, 0, stopSelf,PendingIntent.FLAG_CANCEL_CURRENT);;
+
+        Notification notification =
+                new Notification.Builder(this, "foregroundAlert")
+                        .setSmallIcon(R.drawable.logo)
+                        .setContentTitle("Controller is running")
+                        .setContentText("Tap to stop.")
+                        .setOngoing(true)
+                        .setAutoCancel(true)
+                        .setContentIntent(pendingIntent)
+                        .build();
+
+        startForeground(NotificationCompat.PRIORITY_LOW, notification);
 
         fullPlaylist = MainActivity.context.playlist;
         playlist = (ArrayList<MainActivity.Track>) fullPlaylist.clone();
@@ -150,14 +178,11 @@ public class MainWorker extends Worker {
                 if (key.equals("allowMinorRepetition")) {
                     minorRepeatEnabled = prefs.getBoolean("allowMinorRepetition", false);
                     minorRepeatRate = prefs.getInt("repetitionTolerance", 1);
-                }
-                else if (key.equals("repetitionTolerance")) {
+                } else if (key.equals("repetitionTolerance")) {
                     minorRepeatRate = prefs.getInt("repetitionTolerance", 1);
-                }
-                else if (key.equals("repeatEnabled")) {
+                } else if (key.equals("repeatEnabled")) {
                     repeatEnabled = prefs.getBoolean("repeatEnabled", false);
-                }
-                else if (key.equals("locationAccuracy")) {
+                } else if (key.equals("locationAccuracy")) {
                     updateLocationPriority(prefs);
                 }
 
@@ -175,12 +200,12 @@ public class MainWorker extends Worker {
         playerApi
                 .getCrossfadeState()
                 .setResultCallback(
-                    crossfadeState -> {
-                        fadeDuration = crossfadeState.duration;
-                });
+                        crossfadeState -> {
+                            fadeDuration = crossfadeState.duration;
+                        });
 
         active = true;
-        return Result.success();
+        return START_STICKY;
 
         //TODO, play playlist on start
         //TODO, make sure receiver is receiving, if not, point to Spotify settings
@@ -197,11 +222,10 @@ public class MainWorker extends Worker {
         else if (priority.equals("Favour Battery Life")) {
             LocationPriority = Priority.PRIORITY_LOW_POWER;
         }
-        Log.e("", "DEBUG: "+LocationPriority);
     }
 
     @Override
-    public void onStopped() {
+    public void onDestroy() {
         active = false;
         try {
             getApplicationContext().unregisterReceiver(broadcastReceiver);
@@ -215,11 +239,11 @@ public class MainWorker extends Worker {
             startLocationTracking.interrupt();
         }
         stopLocationUpdates();
-        super.onStopped();
 
         MainActivity.context.setSwitch(false);
 
-        Log.e(TAG, "Worker stopped");
+        Log.e(TAG, "Service stopped");
+        super.onDestroy();
     }
 
     // INTERACTION WITH ANDROID SDK
@@ -243,7 +267,7 @@ public class MainWorker extends Worker {
             public void run() { // quickly pause then resume track, to ensure playback is caught after meta
                 playerApi.pause();
                 try {
-                    sleep(100);
+                    sleep(20);
                 }
                 catch (InterruptedException e) {
                     e.printStackTrace();
@@ -318,7 +342,7 @@ public class MainWorker extends Worker {
 
         if (playlist.size() == 0) { // PLAYLIST ENDED
             Log.d(TAG, "Playlist empty");
-            onStopped();
+            onDestroy();
         }
         else if (playlist.size() == 1) { // END OF PLAYLIST
             String nextTrackID = playlist.get(0).id;
@@ -436,6 +460,10 @@ public class MainWorker extends Worker {
 
     private void getLocation() {
 
+        if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_DENIED) {
+            Log.e(TAG, "Tried to getLocation without FINE_LOCATION permission");
+            return;
+        }
         if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_DENIED) {
             Log.e(TAG, "Tried to getLocation without FINE_LOCATION permission");
             return;
@@ -450,6 +478,7 @@ public class MainWorker extends Worker {
                 .setPriority(LocationPriority)
                 .setMaxUpdateAgeMillis(1000)
                 .setGranularity(Granularity.GRANULARITY_PERMISSION_LEVEL)
+                .setDurationMillis(30000)
                 .build();
 
         try {
