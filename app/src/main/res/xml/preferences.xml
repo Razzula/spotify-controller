@@ -14,12 +14,12 @@
             app:summaryOn="When playlist repetition is enabled, tracks can repeat within the playlist." />
         <SeekBarPreference
             android:id="@+id/seekbarTolerance"
-            android:max="12"
+            android:max="100"
             app:iconSpaceReserved="false"
             app:key="repetitionTolerance"
             app:min="1"
             app:showSeekBarValue="true"
-            app:summary="Number of tracks that must play before a track is repeated."
+            app:summary="Percentage of playlist that must play before tracks can repeat"
             app:title="Tolerance" />
     </PreferenceCategory>
 

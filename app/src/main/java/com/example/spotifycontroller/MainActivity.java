@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import android.Manifest;
 import android.app.AlertDialog;
+import android.app.Service;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -228,17 +229,6 @@ public class MainActivity extends AppCompatActivity {
         context.startService(mainIntent);
     }
 
-    //TEMP
-    public void setLocationText(String location, String speed) {
-        TextView textLocation = findViewById(R.id.location);
-        TextView textSpeed = findViewById(R.id.data);
-
-        runOnUiThread(() -> {
-            textLocation.setText(location);
-            textSpeed.setText(speed);
-        });
-    }
-
     // INTERACTION WITH SPOTIFY WEB API
 
     private static JSONObject GET(final String endpoint, final String id) {
@@ -415,6 +405,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 else { // NO IMAGES
                     this.playlists.add(new Playlist(id, name, description, numberOfTracks));
+                    checkIfPlaylistsLoaded(playlists.length());
                 }
 
             }

@@ -1,6 +1,5 @@
 package com.example.spotifycontroller;
 
-import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
 import static java.lang.Thread.sleep;
 
 import android.Manifest;
@@ -11,19 +10,19 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.pm.ServiceInfo;
 import android.location.Location;
-import android.net.Uri;
+import android.os.Build;
 import android.os.IBinder;
 import android.os.SystemClock;
 import android.util.Log;
 
 import androidx.core.app.ActivityCompat;
-import androidx.core.app.NotificationCompat;
-import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import androidx.preference.PreferenceManager;
 
 import com.google.android.gms.location.CurrentLocationRequest;
@@ -35,9 +34,9 @@ import com.spotify.android.appremote.api.ConnectionParams;
 import com.spotify.android.appremote.api.Connector;
 import com.spotify.android.appremote.api.PlayerApi;
 import com.spotify.android.appremote.api.SpotifyAppRemote;
-import com.spotify.protocol.types.Capabilities;
-import com.spotify.protocol.types.UserStatus;
 
+import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.Queue;
@@ -48,6 +47,8 @@ public class MainService extends Service {
     private static final String CLIENT_ID = "c3ea15ea37eb4121a64ee8af3521f832";
     private static final String REDIRECT_URI = "com.example.spotifycontroller://callback";
     public static MainService context;
+
+    //PowerManager.WakeLock wakeLock;
 
     SpotifyAppRemote mSpotifyAppRemote;
     PlayerApi playerApi;
@@ -83,6 +84,7 @@ public class MainService extends Service {
 
         public void run() {
 
+            Log.e("", "end in "+timeToWait);
             if (timeToWait < 1000) {
                 return;
             }
@@ -92,6 +94,7 @@ public class MainService extends Service {
                 if (!queued) {
                     queued = true;
                     //getLocation();
+                    Log.e("", "time to get next track");
                     stopLocationUpdates();
                     queueNextTrack();
                 }
@@ -111,12 +114,14 @@ public class MainService extends Service {
 
         public void run() {
 
+            Log.e("", "loc in "+timeToWait);
             if (timeToWait < 0) {
                 return;
             }
 
             try {
                 sleep(timeToWait); // wait until near end of song
+                Log.e("", "time to start location calls");
                 startLocationUpdates();
 
             } catch (InterruptedException e) {
@@ -148,6 +153,7 @@ public class MainService extends Service {
         if (intent.getAction().equals("START")) {
 
             Log.e(TAG, "Service started");
+            writeToFile("\n ------------------------------------------------\n");
 
             //data
             fullPlaylist = MainActivity.context.playlist;
@@ -157,28 +163,15 @@ public class MainService extends Service {
 
             // PREFERENCES LISTENER
             SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-            minorRepeatEnabled = prefs.getBoolean("allowMinorRepetition", false);
-            minorRepeatRate = prefs.getInt("repetitionTolerance", 1);
-            if (minorRepeatRate >= playlist.size()) {
-                minorRepeatRate = playlist.size() - 1;
-            }
+            setMinorRepeat(prefs);
             repeatEnabled = prefs.getBoolean("repeatEnabled", false);
             updateLocationPriority(prefs);
 
             SharedPreferences.OnSharedPreferenceChangeListener listener = (prefs1, key) -> {
                 switch (key) {
                     case "allowMinorRepetition":
-                        minorRepeatEnabled = prefs1.getBoolean("allowMinorRepetition", false);
-                        minorRepeatRate = prefs1.getInt("repetitionTolerance", 1);
-                        if (minorRepeatRate >= playlist.size()) {
-                            minorRepeatRate = playlist.size() - 1;
-                        }
-                        break;
                     case "repetitionTolerance":
-                        minorRepeatRate = prefs1.getInt("repetitionTolerance", 1);
-                        if (minorRepeatRate >= playlist.size()) {
-                            minorRepeatRate = playlist.size() - 1;
-                        }
+                        setMinorRepeat(prefs1);
                         break;
                     case "repeatEnabled":
                         repeatEnabled = prefs1.getBoolean("repeatEnabled", false);
@@ -221,12 +214,22 @@ public class MainService extends Service {
                             .setContentIntent(pendingIntent)
                             .build();
 
-            startForeground(NotificationCompat.PRIORITY_LOW, notification);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(1234, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+            }
+            else {
+                startForeground(1234, notification);
+            }
+
             return START_STICKY;
         }
         // RETURN TO BACKGROUND
         else if (intent.getAction().equals("TO_BACK")) {
             stopForeground(true);
+            /*if (wakeLock != null) {
+                wakeLock.release();
+                wakeLock = null;
+            }*/ //TEMP
             return START_STICKY;
         }
 
@@ -310,6 +313,14 @@ public class MainService extends Service {
         super.onDestroy();
     }
 
+    private void setMinorRepeat(SharedPreferences prefs) {
+        minorRepeatEnabled = prefs.getBoolean("allowMinorRepetition", false);
+        minorRepeatRate = (int) Math.ceil(prefs.getInt("repetitionTolerance", 1) * fullPlaylist.size() / 100f);
+        if (minorRepeatRate >= playlist.size()) {
+            minorRepeatRate = playlist.size() - 1;
+        }
+    }
+
     // INTERACTION WITH ANDROID SDK
 
     private void connectToSpotifyApp() {
@@ -348,14 +359,8 @@ public class MainService extends Service {
         queued = false;
 
         Log.e(TAG, "META CHANGED");
-        //TEMP
-        try {
-            String energy = MainActivity.getSingleTrackEnergy(trackID.split(":")[2]); // get id from URI
-            Log.e(TAG, "Playing " + trackName + ", Energy:" + energy);
-        } catch (IndexOutOfBoundsException e) {
-            Log.e(TAG, "Invalid trackID");
-            return;
-        }
+        Log.e(TAG, "Playing " + trackName);
+        writeToFile("Playing " + trackName + "\n");
 
         stopLocationUpdates();
         new Thread(() -> { // quickly pause then resume track, to ensure playback is caught after meta
@@ -491,6 +496,7 @@ public class MainService extends Service {
             Random rand = new Random();
             currentEnergy = rand.nextFloat();*/
             Log.e(TAG, "Energy: " + currentEnergy);
+            writeToFile("Average Speed: " + currentVelocity + "m/s \n");
 
             // find song based off of energy //TODO, randomize to prevent always same order of tracks
             float minDelta = 1;
@@ -525,6 +531,7 @@ public class MainService extends Service {
             //queue
             playerApi.queue("spotify:track:" + nextTrack.id);
             Log.e(TAG, "QUEUED " + nextTrack.name);
+            writeToFile("QUEUED " + nextTrack.name + "\n");
         }
     }
 
@@ -533,13 +540,17 @@ public class MainService extends Service {
     public class getLocationCaller extends Thread {
 
         public void run() {
+            Log.e("TEMP", "1");
             try {
+                Log.e("TEMP", "1.4");
                 sleep(5000);
+                Log.e("TEMP", "1.5a");
                 getLocation();
                 getNextLocation = new getLocationCaller();
                 getNextLocation.start();
 
             } catch (InterruptedException e) {
+                Log.e("TEMP", "1.5b");
                 e.printStackTrace();
             }
         }
@@ -558,6 +569,7 @@ public class MainService extends Service {
         getNextLocation.start();
 
         Log.e(TAG, "Location updates started");
+        writeToFile("Location updates started\n");
 
         //getLocation();
 
@@ -567,11 +579,13 @@ public class MainService extends Service {
         if (getNextLocation !=  null) {
             getNextLocation.interrupt();
             Log.e(TAG, "Location updates halted");
+            writeToFile("Location updates halted\n");
         }
     }
 
     private void getLocation() {
 
+        Log.e("TEMP", "2");
         if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_DENIED) {
             Log.e(TAG, "Tried to getLocation without FINE_LOCATION permission");
             return;
@@ -588,9 +602,11 @@ public class MainService extends Service {
                 .setDurationMillis(30000)
                 .build();
 
+        Log.e("TEMP", "3");
         try {
 
             fusedLocationProviderClient.getCurrentLocation(currentLocationRequest, null).addOnCompleteListener(task -> {
+                Log.e("TEMP", "4");
                 Location currentLocation = task.getResult(); // get Location
                 if (currentLocation != null) {
                     locationUpdated(currentLocation);
@@ -611,10 +627,11 @@ public class MainService extends Service {
 
     private void locationUpdated(Location newLocation) {
 
+        Log.e("TEMP", "'ere");
         if (lastKnownLocation != null) {
             // calculate velocity
             float distanceTravelled = newLocation.distanceTo(lastKnownLocation);
-            float timePassed = (SystemClock.elapsedRealtimeNanos() - lastKnownLocation.getElapsedRealtimeNanos()) / 1000000000; //in ms
+            float timePassed = (SystemClock.elapsedRealtimeNanos() - lastKnownLocation.getElapsedRealtimeNanos()) / 1000000000f; //in ms
 
             float currentVelocity = distanceTravelled / timePassed;
             if (Float.isNaN(currentVelocity)) {
@@ -625,20 +642,26 @@ public class MainService extends Service {
 
 
             Log.e(TAG, "GPS: "+currentVelocity+"m/s ("+(currentVelocity*2.23694)+"mph)");
-
-            MainActivity.context.setLocationText(
-                    "lat:"+newLocation.getLatitude()+"\nlong:"+newLocation.getLongitude(),
-                    "time :"+timePassed+"s\nGPS: "+currentVelocity+"m/s ("+Math.round(currentVelocity*2.23694*100)/100+"mph)"+"\n\nenergy: "+(currentVelocity/31.2928)
-            );
+            writeToFile("GPS: "+currentVelocity+"m/s ("+(currentVelocity*2.23694)+"mph)\n");
         }
         else {
-            MainActivity.context.setLocationText(
-                    "lat:"+newLocation.getLatitude()+"\nlong:"+newLocation.getLongitude(),
-                    "no data on velocity"
-            );
+            Log.e(TAG, "Could not get location");
         }
 
         lastKnownLocation = newLocation;
+    }
+
+    //TEMP
+    private void writeToFile(String data) {
+        Context context = getApplicationContext();
+        try {
+            OutputStreamWriter outputStreamWriter = new OutputStreamWriter(context.openFileOutput("log.txt", Context.MODE_APPEND));
+            outputStreamWriter.write(data);
+            outputStreamWriter.close();
+        }
+        catch (IOException e) {
+            Log.e("Exception", "File write failed: " + e.toString());
+        }
     }
 
 }
