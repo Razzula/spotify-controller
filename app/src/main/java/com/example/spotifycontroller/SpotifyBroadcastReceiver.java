@@ -6,6 +6,12 @@ import android.content.Intent;
 
 public class SpotifyBroadcastReceiver extends BroadcastReceiver {
 
+    MainService service;
+
+    SpotifyBroadcastReceiver(MainService service) {
+        this.service = service;
+    }
+
     @Override
     public void onReceive(Context context, Intent intent)
     {
@@ -17,13 +23,13 @@ public class SpotifyBroadcastReceiver extends BroadcastReceiver {
             String trackName = intent.getStringExtra("track");
             int trackLengthInSec = intent.getIntExtra("length", 0);
 
-            MainService.context.onMetadataChange(trackId, trackLengthInSec, trackName);
+            service.onMetadataChange(trackId, trackLengthInSec, trackName);
         }
         else if (action.equals("com.spotify.music.playbackstatechanged")) {
             boolean playing = intent.getBooleanExtra("playing", false);
             int positionInMs = intent.getIntExtra("playbackPosition", 0);
 
-            MainService.context.onPlaybackStateChange(playing, positionInMs);
+            service.onPlaybackStateChange(playing, positionInMs);
         }
     }
 

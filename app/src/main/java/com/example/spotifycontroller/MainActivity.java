@@ -14,6 +14,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.media.audiofx.Equalizer;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
@@ -29,6 +30,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.JSONArray;
 
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.util.Log;
 import android.content.Intent;
 import android.view.Menu;
@@ -120,6 +123,16 @@ public class MainActivity extends AppCompatActivity {
             toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
 
                 if (isChecked) {
+
+                    PowerManager tpm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+                    if (!tpm.isIgnoringBatteryOptimizations("com.example.spotifycontroller")) {
+                        Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                        Uri uri = Uri.fromParts("package", "com.example.spotifycontroller", null);
+                        intent.setData(uri);
+                        startActivity(intent);
+                        buttonView.setChecked(false);
+                        return;
+                    }
 
                     if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                         beginProcess();

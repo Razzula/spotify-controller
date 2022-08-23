@@ -18,7 +18,9 @@ import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.location.Location;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.util.Log;
 
@@ -52,15 +54,15 @@ public class MainService extends Service {
 
     SpotifyAppRemote mSpotifyAppRemote;
     PlayerApi playerApi;
-    private BroadcastReceiver broadcastReceiver;
+    private BroadcastReceiver spotifyBroadcastReceiver;
+    private AlarmBroadcastManager alarmBroadcastManager;
 
     int currentTrackLength = 0;
     ArrayList<Float> velocities;
 
     boolean valid = false;
 
-    actionAtEndOfTrack endOfTrackAction;
-    actionTowardsEndOfTrack startLocationTracking;
+    Handler getLocationCaller = new Handler();
 
     FusedLocationProviderClient fusedLocationProviderClient;
     Location lastKnownLocation;
@@ -79,60 +81,9 @@ public class MainService extends Service {
     Queue<String> recentlyPlayed;
     String playlistURI;
 
-    public class actionAtEndOfTrack extends Thread {
-        long timeToWait = 0;
+    boolean metaReceived = false;
 
-        public void run() {
-
-            Log.e("", "end in "+timeToWait);
-            if (timeToWait < 1000) {
-                return;
-            }
-
-            try {
-                sleep(timeToWait); // wait until near end of song
-                if (!queued) {
-                    queued = true;
-                    //getLocation();
-                    Log.e("", "time to get next track");
-                    stopLocationUpdates();
-                    queueNextTrack();
-                }
-
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-
-        public void setTimeToWait(long timeToWait) {
-            this.timeToWait = timeToWait;
-        }
-    }
-
-    public class actionTowardsEndOfTrack extends Thread {
-        long timeToWait = 0;
-
-        public void run() {
-
-            Log.e("", "loc in "+timeToWait);
-            if (timeToWait < 0) {
-                return;
-            }
-
-            try {
-                sleep(timeToWait); // wait until near end of song
-                Log.e("", "time to start location calls");
-                startLocationUpdates();
-
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-
-        public void setTimeToWait(long timeToWait) {
-            this.timeToWait = timeToWait;
-        }
-    }
+    PowerManager.WakeLock wakeLock;
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -255,14 +206,25 @@ public class MainService extends Service {
 
         active = true;
 
-        // BROADCAST RECEIVER
-        broadcastReceiver = new SpotifyBroadcastReceiver();
+        PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "spotifycontroller::getLocationUpdates");
+
+        // SPOTIFY BROADCAST RECEIVER
+        spotifyBroadcastReceiver = new SpotifyBroadcastReceiver(this);
 
         IntentFilter filter = new IntentFilter();
         filter.addAction("com.spotify.music.playbackstatechanged");
         filter.addAction("com.spotify.music.metadatachanged");
 
-        getApplicationContext().registerReceiver(broadcastReceiver, filter);
+        getApplicationContext().registerReceiver(spotifyBroadcastReceiver, filter);
+
+        // ALARM BROADCAST RECEIVER
+        alarmBroadcastManager = new AlarmBroadcastManager(this);
+
+        filter = new IntentFilter();
+        filter.addAction("com.example.spotifycontroller.endOfTrack");
+        filter.addAction("com.example.spotifycontroller.startLocationUpdates");
+        getApplicationContext().registerReceiver(alarmBroadcastManager, filter);
 
         // INITIALISE QUEUE
         playerApi.getPlayerState().setResultCallback(playerState -> {
@@ -291,16 +253,14 @@ public class MainService extends Service {
     public void onDestroy() {
         active = false;
         try {
-            getApplicationContext().unregisterReceiver(broadcastReceiver);
+            getApplicationContext().unregisterReceiver(spotifyBroadcastReceiver);
+        }
+        catch (IllegalArgumentException ignored) {}
+        try {
+            getApplicationContext().unregisterReceiver(alarmBroadcastManager);
         }
         catch (IllegalArgumentException ignored) {}
 
-        if (endOfTrackAction != null) {
-            endOfTrackAction.interrupt();
-        }
-        if (startLocationTracking != null) {
-            startLocationTracking.interrupt();
-        }
         stopLocationUpdates();
 
         if (mSpotifyAppRemote != null) {
@@ -363,14 +323,14 @@ public class MainService extends Service {
         writeToFile("Playing " + trackName + "\n");
 
         stopLocationUpdates();
-        new Thread(() -> { // quickly pause then resume track, to ensure playback is caught after meta
-            playerApi.pause();
-            try {
-                sleep(10);
-            }
-            catch (InterruptedException ignore) {}
+
+        // quickly pause then resume track, to ensure playback is caught after meta
+        playerApi.pause();
+        Runnable r =  new Thread(() -> {
             playerApi.resume();
-        }).start();
+            metaReceived = true;
+        });
+        new Handler().postDelayed(r, 100);
 
         // make sure receiver is receiving, if not, point to Spotify settings
         playerApi.getPlayerState().setResultCallback(playerState -> {
@@ -388,66 +348,53 @@ public class MainService extends Service {
 
     public void onPlaybackStateChange(boolean playing, int playbackPos) {
 
+        if (!metaReceived) {
+            return;
+        }
+
         if (playing) {
             Log.e(TAG, "PLAYBACK STARTED");
             long timeToWait;
 
-            // start thread to queue next track at end of current track
-            timeToWait = currentTrackLength - playbackPos - fadeDuration - 2000; // time (in ms) until 10s from end of track
-            //Log.d(TAG, "" + timeToWait);
+            // SET ALARM TO QUEUE NEXT TRACK AT END OF CURRENT TRACK
+            timeToWait = currentTrackLength - playbackPos - fadeDuration - 5000; // time (in ms) from end of track
 
-            if (endOfTrackAction != null) {
-                endOfTrackAction.interrupt();
-            }
-            endOfTrackAction = new actionAtEndOfTrack();
-            try {
-                endOfTrackAction.setTimeToWait(timeToWait);
-                endOfTrackAction.start();
-            } catch (IllegalThreadStateException e) {
-                Log.e(TAG, "Illegal State Exception");
+            alarmBroadcastManager.cancelAlarm("endOfTrack"); //interrupt existing
+            if (timeToWait >= 0) {
+                alarmBroadcastManager.setAlarm("endOfTrack", timeToWait);
             }
 
-            // start thread to start location updates towards end of track
+            // SET ALARM TO BEGIN LOCATION UPDATES
             timeToWait = currentTrackLength - playbackPos - 60000; // time (in ms) until 60s from end of track
-            //Log.d(TAG, "" + timeToWait);
 
-            if (startLocationTracking != null) {
-                startLocationTracking.interrupt();
-            }
+            getLocationCaller.removeCallbacks(getLocation); //interrupt existing
+            alarmBroadcastManager.cancelAlarm("startLocationUpdates");
 
-            /*if (currentTrackLength - playbackPos < 10000) {
-                return;
-            }*/
-
-            if (timeToWait < 0) {
+            velocities = new ArrayList<>();
+            if (timeToWait <= 0) {
                 startLocationUpdates();
             }
             else {
-
-                startLocationTracking = new actionTowardsEndOfTrack();
-                try {
-                    startLocationTracking.setTimeToWait(timeToWait);
-                    startLocationTracking.start();
-                } catch (IllegalThreadStateException e) {
-                    Log.e(TAG, "Illegal State Exception");
-                }
+                alarmBroadcastManager.setAlarm("startLocationUpdates", timeToWait);
             }
-
 
         } else {
             Log.e(TAG, "PLAYBACK STOPPED");
 
-            if (endOfTrackAction != null) {
-                endOfTrackAction.interrupt();
-            }
-            if (startLocationTracking != null) {
-                startLocationTracking.interrupt();
-            }
+            //interrupt any alarms
+            alarmBroadcastManager.cancelAlarm("endOfTrack");
+            getLocationCaller.removeCallbacks(getLocation);
+            alarmBroadcastManager.cancelAlarm("startLocationUpdates");
             stopLocationUpdates();
         }
     }
 
-    private void queueNextTrack() {
+    public void queueNextTrack() {
+
+        if (queued) {
+            return;
+        }
+        queued = true;
 
         if (playlist.size() == 0) { // PLAYLIST ENDED
             Log.d(TAG, "Playlist empty");
@@ -533,59 +480,39 @@ public class MainService extends Service {
             Log.e(TAG, "QUEUED " + nextTrack.name);
             writeToFile("QUEUED " + nextTrack.name + "\n");
         }
+
+        metaReceived = false;
+    };
+
+    public void startLocationUpdates() {
+        wakeLock.acquire(66*1000);
+        getLocationCaller.post(getLocation);
     }
 
-    // GPS LOCATION
-
-    public class getLocationCaller extends Thread {
-
+    private final Runnable getLocation = new Runnable() {
+        @Override
         public void run() {
-            Log.e("TEMP", "1");
-            try {
-                Log.e("TEMP", "1.4");
-                sleep(5000);
-                Log.e("TEMP", "1.5a");
-                getLocation();
-                getNextLocation = new getLocationCaller();
-                getNextLocation.start();
+            getLocation();
+            getLocationCaller.postDelayed(this, 5000);
+        }
+    };
 
-            } catch (InterruptedException e) {
-                Log.e("TEMP", "1.5b");
-                e.printStackTrace();
-            }
+    public void stopLocationUpdates() { //temp
+        getLocationCaller.removeCallbacks(getLocation);
+        if (alarmBroadcastManager != null) {
+            alarmBroadcastManager.cancelAlarm("startLocationUpdates");
+        }
+
+        Log.e(TAG, "Location updates halted");
+        writeToFile("Location updates halted\n");
+
+        if (wakeLock.isHeld()) {
+            wakeLock.release();
         }
     }
 
-    Thread getNextLocation;
+    public void getLocation() {
 
-    private void startLocationUpdates() {
-
-        velocities = new ArrayList<>();
-
-        if (getNextLocation != null) {
-            getNextLocation.interrupt();
-        }
-        getNextLocation = new getLocationCaller();
-        getNextLocation.start();
-
-        Log.e(TAG, "Location updates started");
-        writeToFile("Location updates started\n");
-
-        //getLocation();
-
-    }
-
-    private void stopLocationUpdates() {
-        if (getNextLocation !=  null) {
-            getNextLocation.interrupt();
-            Log.e(TAG, "Location updates halted");
-            writeToFile("Location updates halted\n");
-        }
-    }
-
-    private void getLocation() {
-
-        Log.e("TEMP", "2");
         if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_DENIED) {
             Log.e(TAG, "Tried to getLocation without FINE_LOCATION permission");
             return;
@@ -602,11 +529,9 @@ public class MainService extends Service {
                 .setDurationMillis(30000)
                 .build();
 
-        Log.e("TEMP", "3");
         try {
 
             fusedLocationProviderClient.getCurrentLocation(currentLocationRequest, null).addOnCompleteListener(task -> {
-                Log.e("TEMP", "4");
                 Location currentLocation = task.getResult(); // get Location
                 if (currentLocation != null) {
                     locationUpdated(currentLocation);
@@ -627,7 +552,6 @@ public class MainService extends Service {
 
     private void locationUpdated(Location newLocation) {
 
-        Log.e("TEMP", "'ere");
         if (lastKnownLocation != null) {
             // calculate velocity
             float distanceTravelled = newLocation.distanceTo(lastKnownLocation);
@@ -639,7 +563,6 @@ public class MainService extends Service {
                 Log.e(TAG, "NaN: "+distanceTravelled+", "+timePassed);
             }
             velocities.add(currentVelocity);
-
 
             Log.e(TAG, "GPS: "+currentVelocity+"m/s ("+(currentVelocity*2.23694)+"mph)");
             writeToFile("GPS: "+currentVelocity+"m/s ("+(currentVelocity*2.23694)+"mph)\n");
