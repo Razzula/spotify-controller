@@ -43,6 +43,7 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -123,36 +124,7 @@ public class MainActivity extends AppCompatActivity {
             toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
 
                 if (isChecked) {
-
-                    PowerManager tpm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-                    if (!tpm.isIgnoringBatteryOptimizations("com.example.spotifycontroller")) {
-                        Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                        Uri uri = Uri.fromParts("package", "com.example.spotifycontroller", null);
-                        intent.setData(uri);
-                        startActivity(intent);
-                        buttonView.setChecked(false);
-                        return;
-                    }
-
-                    if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                        beginProcess();
-                    }
-                    else {
-                        if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION)) {
-                            AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.context);
-                            builder.setMessage(R.string.dialogue_permissions)
-                                    .setTitle(R.string.dialogue_permissions_T)
-                                    .setPositiveButton("Okay", (dialog, id) -> ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44))
-                                    .setNegativeButton("Cancel", (dialog, id) -> setSwitch(false))
-                                    .setOnCancelListener(dialog -> setSwitch(false));
-
-                            AlertDialog dialog = builder.create();
-                            dialog.show();
-                        }
-                        else {
-                            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44);
-                        }
-                    }
+                    checkLocationPermissions();
                 }
 
                 else {
@@ -175,6 +147,49 @@ public class MainActivity extends AppCompatActivity {
         itemDesc.setText("");
         itemInfo.setText("");
         itemImg.setVisibility(View.GONE);
+    }
+
+    private void checkLocationPermissions() {
+        // LOCATION PERMISSIONS
+        if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            checkStandbyPermissions();
+        }
+        else {
+            if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION)) {
+                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.context);
+                builder.setMessage(R.string.dialogue_location)
+                        .setTitle(R.string.dialogue_permissions_T)
+                        .setPositiveButton(R.string.dialogue_ok, (dialog, id) -> ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44))
+                        .setNegativeButton(R.string.dialogue_cancel, (dialog, id) -> setSwitch(false))
+                        .setOnCancelListener(dialog -> setSwitch(false));
+
+                AlertDialog dialog = builder.create();
+                dialog.show();
+            } else {
+                ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44);
+            }
+        }
+    }
+
+    private void checkStandbyPermissions() {
+        // IGNORE BATTERY OPTIMIZATIONS WHITELIST
+        PowerManager tpm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+        if (!tpm.isIgnoringBatteryOptimizations("com.example.spotifycontroller")) {
+
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            Uri uri = Uri.fromParts("package", "com.example.spotifycontroller", null);
+            intent.setData(uri);
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.context);
+            builder.setMessage(R.string.dialogue_ignoreBattery)
+                    .setTitle(R.string.dialogue_permissions_T)
+                    .setPositiveButton(R.string.dialogue_ok, (dialog, id) -> startActivity(intent))
+                    .setNegativeButton(R.string.dialogue_awakeOnly, null)
+                    .setOnDismissListener(dialog -> beginProcess());
+
+            AlertDialog dialog = builder.create();
+            dialog.show();
+        }
     }
 
     @Override
@@ -222,12 +237,14 @@ public class MainActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-        if (requestCode == 44) {
+        if (requestCode == 44) { // LOCATION
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                beginProcess();
+                checkStandbyPermissions();
             }
             else {
                 setSwitch(false);
+                Toast myToast = Toast.makeText(this, "Location permissions required", Toast.LENGTH_LONG);
+                myToast.show();
             }
         }
     }

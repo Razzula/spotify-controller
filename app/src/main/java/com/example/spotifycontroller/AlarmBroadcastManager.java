@@ -56,9 +56,17 @@ public class AlarmBroadcastManager extends BroadcastReceiver {
         }
 
         PendingIntent sender = PendingIntent.getBroadcast(service, 0, new Intent("com.example.spotifycontroller." + intentAction), 0);
-        //alarmManager.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + timeUntilAlarm, sender);
-        AlarmManager.AlarmClockInfo info = new AlarmManager.AlarmClockInfo(System.currentTimeMillis() + timeUntilAlarm, sender);
-        alarmManager.setAlarmClock(info, sender);
+
+        PowerManager tpm = (PowerManager) service.getSystemService(Context.POWER_SERVICE);
+        if (tpm.isIgnoringBatteryOptimizations("com.example.spotifycontroller")) {
+            // ALLOW FIRING IN DOZE
+            AlarmManager.AlarmClockInfo info = new AlarmManager.AlarmClockInfo(System.currentTimeMillis() + timeUntilAlarm, sender);
+            alarmManager.setAlarmClock(info, sender);
+        }
+        else {
+            // ONLY FIRE WHEN ACTIVE
+            alarmManager.setExact(alarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + timeUntilAlarm, sender);
+        }
 
         Log.e("", intentAction+" in "+timeUntilAlarm);
     }
