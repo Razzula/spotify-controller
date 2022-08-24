@@ -26,6 +26,8 @@ public class SplashActivity extends AppCompatActivity {
     SpotifyAppRemote mSpotifyAppRemote;
     private static String token;
 
+    boolean loginAlreadyFailed = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -72,7 +74,7 @@ public class SplashActivity extends AppCompatActivity {
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
             builder.setMessage(R.string.dialogue_noSpotify)
                     .setTitle(R.string.dialogue_noSpotify_T)
-                    .setPositiveButton(R.string.dialouge_takeMe, (dialog, id) -> getSpotify())
+                    .setPositiveButton(R.string.dialouge_install, (dialog, id) -> getSpotify())
                     .setNegativeButton(R.string.dialogue_exit, (dialog, id) -> finish())
                     .setCancelable(false);
 
@@ -124,6 +126,10 @@ public class SplashActivity extends AppCompatActivity {
                     public void onFailure(Throwable throwable) {
                         Log.e("SplashActivity", throwable.getMessage(), throwable);
 
+                        if (loginAlreadyFailed) {
+                            finishAffinity();
+                        }
+                        loginAlreadyFailed = true;
                         // Handle errors here
                         AlertDialog.Builder builder = new AlertDialog.Builder(getApplicationContext());
                         builder.setMessage(R.string.dialogue_appRemoteFail)
@@ -131,6 +137,9 @@ public class SplashActivity extends AppCompatActivity {
                                 .setPositiveButton(R.string.dialouge_retry, (dialog, id) -> connectToSpotifyApp())
                                 .setNegativeButton(R.string.dialogue_exit, (dialog, id) -> finish())
                                 .setCancelable(false);
+
+                        /*AlertDialog dialog = builder.create();
+                        dialog.show();*/
                     }
                 });
 

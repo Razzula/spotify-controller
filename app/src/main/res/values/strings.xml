@@ -9,14 +9,18 @@
     <string name="dialogue_appRemoteFail_T">Error</string>
     <string name="dialogue_appRemoteFail">Could not establish connection with Spotify.</string>
 
+    <string name="dialogue_noPremium_T">Spotify Premium Required</string>
+    <string name="dialogue_noPremium">Uh oh. Looks like you\'re not a Spotify Premium user. This app requires Premium features in order to function.\n\nSpotify Premium lets you play any track, ad-free and with better audio quality. Go to spotify.com/premium to try it for free.</string>
+
     <string name="dialogue_permissions_T">Permissions Required</string>
     <string name="dialogue_location">This app requires location permissions to calculate your speed, in order to select which tracks to play.</string>
     <string name="dialogue_ignoreBattery">In order to function when the device is in standby mode, this app requires battery optimization whitelist permissions.</string>
 
-    <string name="dialouge_takeMe">Install</string>
+    <string name="dialouge_install">Install</string>
     <string name="dialouge_retry">Try Again</string>
     <string name="dialogue_exit">Exit</string>
     <string name="dialogue_ok">Okay</string>
     <string name="dialogue_cancel">Cancel</string>
     <string name="dialogue_awakeOnly">Run only when awake</string>
+    <string name="dialogue_takeMe">Take me there</string>
 </resources>

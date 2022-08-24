@@ -23,6 +23,7 @@ import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.util.Log;
+import android.widget.Toast;
 
 import androidx.core.app.ActivityCompat;
 import androidx.preference.PreferenceManager;
@@ -36,6 +37,9 @@ import com.spotify.android.appremote.api.ConnectionParams;
 import com.spotify.android.appremote.api.Connector;
 import com.spotify.android.appremote.api.PlayerApi;
 import com.spotify.android.appremote.api.SpotifyAppRemote;
+import com.spotify.android.appremote.api.UserApi;
+import com.spotify.protocol.types.Capabilities;
+import com.spotify.protocol.types.PlayerState;
 
 import java.io.IOException;
 import java.io.OutputStreamWriter;
@@ -199,6 +203,7 @@ public class MainService extends Service {
     }
 
     private void beginProcess() {
+
         playerApi = mSpotifyAppRemote.getPlayerApi();
 
         playerApi.getCrossfadeState()
@@ -228,11 +233,35 @@ public class MainService extends Service {
 
         // INITIALISE QUEUE
         playerApi.getPlayerState().setResultCallback(playerState -> {
-            if (playerState.isPaused) {
+            if (playerState.isPaused || playerState.track == null) {
                 playerApi.play("spotify:playlist:"+playlistURI);
             }
+
+            // make sure receiver is receiving, if not, point to Spotify settings
+            getLocationCaller.post(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        sleep(1000);
+                    } catch (InterruptedException ignored) {
+                    }
+
+                    if (!isMetaReceived) {
+                        AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.context);
+                        builder.setMessage("Spotify doesn't appear to be broadcasting. Without this, the app cannot function properly.\n\nPlease enable 'Device Broadcast Status' in Spotify's settings.")
+                                .setTitle("Uh oh")
+                                .setPositiveButton("Close", (dialog, id) -> {});
+
+                        AlertDialog dialog = builder.create();
+                        dialog.show();
+                    }
+                }
+            });
+
         });
     }
+
+    boolean isMetaReceived = false;
 
     private void updateLocationPriority(SharedPreferences prefs) {
         String priority = prefs.getString("locationAccuracy", "Balance Location Accuracy and Battery Life");
@@ -315,6 +344,8 @@ public class MainService extends Service {
 
     public void onMetadataChange(String trackID, int trackLength, String trackName) {
 
+        isMetaReceived = true;
+
         currentTrackLength = trackLength;
         queued = false;
 
@@ -332,7 +363,7 @@ public class MainService extends Service {
         });
         new Handler().postDelayed(r, 100);
 
-        // make sure receiver is receiving, if not, point to Spotify settings
+        // make sure receiver is receiving by checking trackID is correct, if not, point to Spotify settings
         playerApi.getPlayerState().setResultCallback(playerState -> {
             if (!playerState.track.uri.equals(trackID)) {
                 AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.context);
@@ -388,6 +419,10 @@ public class MainService extends Service {
             stopLocationUpdates();
         }
     }
+
+    /*public void queueNextTrack() {
+
+    }*/
 
     public void queueNextTrack() {
 

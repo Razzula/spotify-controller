@@ -1,5 +1,7 @@
 package com.example.spotifycontroller;
 
+import static java.lang.Thread.sleep;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -9,12 +11,10 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import android.Manifest;
 import android.app.AlertDialog;
-import android.app.Service;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.media.audiofx.Equalizer;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
@@ -23,6 +23,7 @@ import android.os.Bundle;
 // for Spotify SDK
 import com.spotify.android.appremote.api.SpotifyAppRemote;
 import com.spotify.android.appremote.api.PlayerApi;
+import com.spotify.android.appremote.api.UserApi;
 import com.spotify.protocol.types.Image;
 import com.spotify.protocol.types.ImageUri;
 // for Spotify Web API
@@ -38,7 +39,6 @@ import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.CompoundButton;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.Switch;
@@ -174,8 +174,10 @@ public class MainActivity extends AppCompatActivity {
     private void checkStandbyPermissions() {
         // IGNORE BATTERY OPTIMIZATIONS WHITELIST
         PowerManager tpm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-        if (!tpm.isIgnoringBatteryOptimizations("com.example.spotifycontroller")) {
-
+        if (tpm.isIgnoringBatteryOptimizations("com.example.spotifycontroller")) {
+            beginProcess();
+        }
+        else {
             Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
             Uri uri = Uri.fromParts("package", "com.example.spotifycontroller", null);
             intent.setData(uri);
@@ -209,8 +211,16 @@ public class MainActivity extends AppCompatActivity {
             context.startForegroundService(mainIntent);
         }
 
+        // CHECK USER HAS PREMIUM
+        UserApi userApi = mSpotifyAppRemote.getUserApi();
+        userApi.getCapabilities()
+                .setResultCallback(capabilities -> { userIsPremium = capabilities.canPlayOnDemand; })
+                .setErrorCallback(error -> Log.e(TAG, "Could not get user state"));
+
         super.onStart();
     }
+
+    boolean userIsPremium;
 
     @Override
     protected void onStop() {
@@ -250,13 +260,31 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void beginProcess() {
-        getPlaylistTracks(selectedPlaylistID);
-        playerApi.resume();
 
-        Context context = getApplicationContext();
-        mainIntent = new Intent(context, MainService.class);
-        mainIntent.setAction("START");
-        context.startService(mainIntent);
+        if (userIsPremium) {
+            getPlaylistTracks(selectedPlaylistID);
+            playerApi.resume();
+
+            Context context = getApplicationContext();
+            mainIntent = new Intent(context, MainService.class);
+            mainIntent.setAction("START");
+            context.startService(mainIntent);
+        }
+        else {
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.context);
+            builder.setMessage(R.string.dialogue_noPremium)
+                    .setTitle(R.string.dialogue_noPremium_T)
+                    .setPositiveButton(R.string.dialogue_takeMe, (dialog, id) -> {
+                        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://spotify.com/premium/"));
+                        startActivity(browserIntent);
+                    })
+                    .setNegativeButton(R.string.dialogue_cancel, null)
+                    .setOnDismissListener(dialog -> setSwitch(false));
+
+            AlertDialog dialog = builder.create();
+            dialog.show();
+        }
     }
 
     // INTERACTION WITH SPOTIFY WEB API
