@@ -212,10 +212,11 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // CHECK USER HAS PREMIUM
-        UserApi userApi = mSpotifyAppRemote.getUserApi();
+        /*UserApi userApi = mSpotifyAppRemote.getUserApi();
         userApi.getCapabilities()
                 .setResultCallback(capabilities -> { userIsPremium = capabilities.canPlayOnDemand; })
-                .setErrorCallback(error -> Log.e(TAG, "Could not get user state"));
+                .setErrorCallback(error -> Log.e(TAG, "Could not get user state"));*/
+        userIsPremium = true;
 
         super.onStart();
     }
