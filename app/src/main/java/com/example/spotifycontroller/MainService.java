@@ -480,6 +480,10 @@ public class MainService extends Service {
             Log.e(TAG, "Energy: " + currentEnergy);
             writeToFile("Average Speed: " + currentVelocity + "m/s \n");
 
+            //DEBUG
+            Toast toast = Toast.makeText(MainActivity.context, "Average Speed: " + Math.round(currentVelocity*2.23694f), Toast.LENGTH_SHORT);
+            toast.show();
+
             // find song based off of energy //TODO, randomize to prevent always same order of tracks
             float minDelta = 1;
             MainActivity.Track nextTrack = null;
