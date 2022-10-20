@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Spotify Controller</string>
+    <string name="app_name">Beats Per Mile</string>
     <string name="channel_name">Background Presence</string>
     <string name="channel_description">Alert the user that the service is still running in the background.</string>
 

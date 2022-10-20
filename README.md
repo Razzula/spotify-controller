@@ -2,7 +2,7 @@
 <p  align="center">
 	<img  width="128"  height="128"  src="https://github.com/Razzula/spotify-accelerometer/blob/main/app/src/main/res/drawable/logo.png">
 </p>
-<h1  align="center">Spotify Controller</h1>
+<h1  align="center">Beats Per Mile</h1>
 
 An Android app that uses Spotify's SDK and Web API to fill the current song queue with songs appropriate for the current driving speed, from a user-selected playlist.
 
@@ -17,6 +17,8 @@ This app uses Spotify's Android SDK and Web API.
 - Instructions on setup can be found [here](https://developer.spotify.com/documentation/android/quick-start/)
 
 You will also need to [register a Spotify app](https://developer.spotify.com/documentation/general/guides/authorization/app-settings/) to use both the SDK and API.
+
+The package for this project is by default `com.example.spotifycontroller`
 
 Once the prerequisites have been met, the application can be built and deployed using Android Studio.
 
