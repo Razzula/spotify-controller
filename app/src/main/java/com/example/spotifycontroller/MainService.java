@@ -1,5 +1,6 @@
 package com.example.spotifycontroller;
 
+import static android.app.Notification.FOREGROUND_SERVICE_IMMEDIATE;
 import static java.lang.Thread.sleep;
 
 import android.Manifest;
@@ -25,6 +26,7 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.widget.Toast;
 
+import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 import androidx.preference.PreferenceManager;
 
@@ -100,6 +102,36 @@ public class MainService extends Service {
 
         this.context = this; //TODO, use sharedPreferences, not static variables
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(getApplicationContext());
+
+        // BECOME FOREGROUND SERVICE
+        Intent stopSelf = new Intent(this, MainService.class);
+        stopSelf.setAction("HALT");
+        PendingIntent pendingIntent = PendingIntent.getService(this, 0, stopSelf, PendingIntent.FLAG_IMMUTABLE);
+
+        createNotificationChannel();
+
+        Notification.Builder notificationBuilder =
+                new Notification.Builder(this, "foregroundAlert")
+                    .setSmallIcon(R.drawable.logo)
+                    .setContentTitle("Controller is active")
+                    .setContentText("Tap to stop.")
+                    .setOngoing(true)
+                    .setAutoCancel(true)
+                    .setContentIntent(pendingIntent);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            notificationBuilder.setForegroundServiceBehavior(FOREGROUND_SERVICE_IMMEDIATE);
+        }
+
+        Notification notification = notificationBuilder.build();
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1234, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+        }
+        else {
+            startForeground(1234, notification);
+        }
+        Log.e("", "IN FOREGROUND");
     }
 
     @Override
@@ -150,43 +182,6 @@ public class MainService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        // BECOME FOREGROUND SERVICE
-        else if (intent.getAction().equals("TO_FORE")) {
-            // NOTIFICATION
-            Intent stopSelf = new Intent(this, MainService.class);
-            stopSelf.setAction("HALT");
-            PendingIntent pendingIntent = PendingIntent.getService(this, 0, stopSelf,PendingIntent.FLAG_CANCEL_CURRENT);
-
-            createNotificationChannel();
-
-            Notification notification =
-                    new Notification.Builder(this, "foregroundAlert")
-                            .setSmallIcon(R.drawable.logo)
-                            .setContentTitle("Controller is still active")
-                            .setContentText("Tap to stop.")
-                            .setOngoing(true)
-                            .setAutoCancel(true)
-                            .setContentIntent(pendingIntent)
-                            .build();
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(1234, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
-            }
-            else {
-                startForeground(1234, notification);
-            }
-
-            return START_STICKY;
-        }
-        // RETURN TO BACKGROUND
-        else if (intent.getAction().equals("TO_BACK")) {
-            stopForeground(true);
-            /*if (wakeLock != null) {
-                wakeLock.release();
-                wakeLock = null;
-            }*/ //TEMP
-            return START_STICKY;
-        }
 
         return START_NOT_STICKY;
     }
@@ -194,7 +189,7 @@ public class MainService extends Service {
     private void createNotificationChannel() {
         CharSequence name = getString(R.string.channel_name);
         String description = getString(R.string.channel_description);
-        int importance = NotificationManager.IMPORTANCE_DEFAULT;
+        int importance = NotificationManager.IMPORTANCE_HIGH;
         NotificationChannel channel = new NotificationChannel("foregroundAlert", name, importance);
         channel.setDescription(description);
 

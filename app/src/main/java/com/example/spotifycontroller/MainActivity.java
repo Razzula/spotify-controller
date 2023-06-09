@@ -1,7 +1,5 @@
 package com.example.spotifycontroller;
 
-import static java.lang.Thread.sleep;
-
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -23,7 +21,6 @@ import android.os.Bundle;
 // for Spotify SDK
 import com.spotify.android.appremote.api.SpotifyAppRemote;
 import com.spotify.android.appremote.api.PlayerApi;
-import com.spotify.android.appremote.api.UserApi;
 import com.spotify.protocol.types.Image;
 import com.spotify.protocol.types.ImageUri;
 // for Spotify Web API
@@ -106,6 +103,7 @@ public class MainActivity extends AppCompatActivity {
 
 
         prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+
         getUserPlaylists();
 
         // repeat button
@@ -206,11 +204,6 @@ public class MainActivity extends AppCompatActivity {
         Switch toggle = (Switch) findViewById(R.id.switchEnable);
         toggle.setChecked(MainService.active);
 
-        if (mainIntent != null) {
-            mainIntent.setAction("TO_BACK");
-            context.startForegroundService(mainIntent);
-        }
-
         // CHECK USER HAS PREMIUM
         try {
             String userProduct = GET("https://api.spotify.com/v1/me", "").getString("product");
@@ -219,6 +212,8 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
 
+        //TODO: move stuff from onCreate() to here
+
         super.onStart();
     }
 
@@ -226,22 +221,12 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onStop() {
-
-        if (mainIntent != null) {
-            mainIntent.setAction("TO_FORE");
-            context.startForegroundService(mainIntent);
-        }
-
         super.onStop();
     }
 
     @Override
     protected void onDestroy() {
-        if (mainIntent != null) {
-            getApplicationContext().stopService(mainIntent);
-            mainIntent = null;
-        }
-        Log.e("", "Destroyed");
+        Log.e("", "Activity Destroyed");
         super.onDestroy();
     }
 
@@ -270,7 +255,7 @@ public class MainActivity extends AppCompatActivity {
             Context context = getApplicationContext();
             mainIntent = new Intent(context, MainService.class);
             mainIntent.setAction("START");
-            context.startService(mainIntent);
+            context.startForegroundService(mainIntent);
         }
         else {
 

@@ -55,7 +55,7 @@ public class AlarmBroadcastManager extends BroadcastReceiver {
             }
         }
 
-        PendingIntent sender = PendingIntent.getBroadcast(service, 0, new Intent("com.example.spotifycontroller." + intentAction), 0);
+        PendingIntent sender = PendingIntent.getBroadcast(service, 0, new Intent("com.example.spotifycontroller." + intentAction), PendingIntent.FLAG_IMMUTABLE);
 
         PowerManager tpm = (PowerManager) service.getSystemService(Context.POWER_SERVICE);
         if (tpm.isIgnoringBatteryOptimizations("com.example.spotifycontroller")) {
@@ -73,7 +73,7 @@ public class AlarmBroadcastManager extends BroadcastReceiver {
 
     public void cancelAlarm(String intentAction)
     {
-        PendingIntent sender = PendingIntent.getBroadcast(service, 0, new Intent("com.example.spotifycontroller." + intentAction), 0);
+        PendingIntent sender = PendingIntent.getBroadcast(service, 0, new Intent("com.example.spotifycontroller." + intentAction), PendingIntent.FLAG_IMMUTABLE);
         alarmManager.cancel(sender);
 
         Log.e("", intentAction+" cancelled");
